@@ -8,6 +8,7 @@ import { Grinder } from '../../domain/entities/Grinder';
 import { Button } from '../components/Button';
 import { Stack } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
+import { useAuth } from '../../domain/context/AuthContext';
 
 export const ManageGrindersScreen = () => {
     const [grinders, setGrinders] = useState<Grinder[]>([]);
@@ -17,21 +18,23 @@ export const ManageGrindersScreen = () => {
     const [model, setModel] = useState('');
     const repo = new GrinderRepository();
     const theme = useTheme();
+    const { user } = useAuth();
 
     const loadGrinders = async () => {
-        const data = await repo.getAll();
+        if (!user?.id) return;
+        const data = await repo.getAll(user.id);
         setGrinders(data);
     };
 
     useFocusEffect(
         useCallback(() => {
             loadGrinders();
-        }, [])
+        }, [user?.id])
     );
 
     const handleAdd = async () => {
         if (!name) return;
-        await repo.create({ name, brand: brand || 'Unknown', model: model || 'Standard' });
+        await repo.create({ userId: user?.id, name, brand: brand || 'Unknown', model: model || 'Standard' });
         setModalVisible(false);
         setName('');
         setBrand('');

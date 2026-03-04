@@ -13,6 +13,7 @@ import { GrinderRepository } from '../../src/data/repositories/GrinderRepository
 import { Grinder } from '../../src/domain/entities/Grinder';
 import { generateMockData } from '../../src/utils/mockData';
 import Markdown from 'react-native-markdown-display';
+import { useAuth } from '../../src/domain/context/AuthContext';
 
 const LOADING_MESSAGES = [
     'Pulling a shot...',
@@ -113,9 +114,55 @@ function CoffeeLoadingAnimation() {
     );
 }
 
+/**
+ * Find brews from other users that are relevant based on shared equipment.
+ * Relevance = other user has same grinder (name+brand+model) OR same coffee (name+roastery).
+ */
+function findRelevantCrossUserBrews(
+    userCoffees: Coffee[],
+    userGrinders: Grinder[],
+    allBrews: BrewLog[],
+    allCoffees: Coffee[],
+    allGrinders: Grinder[],
+    userId: number,
+): BrewLog[] {
+    // Build sets of user's equipment identifiers
+    const userCoffeeKeys = new Set(
+        userCoffees.map(c => `${c.name?.toLowerCase()}|${c.roastery?.toLowerCase()}`)
+    );
+    const userGrinderKeys = new Set(
+        userGrinders.map(g => `${g.name?.toLowerCase()}|${g.brand?.toLowerCase()}|${g.model?.toLowerCase()}`)
+    );
+
+    // Build lookup maps for all coffees and grinders
+    const coffeeById: Record<number, Coffee> = {};
+    allCoffees.forEach(c => { if (c.id) coffeeById[c.id] = c; });
+    const grinderById: Record<number, Grinder> = {};
+    allGrinders.forEach(g => { if (g.id) grinderById[g.id] = g; });
+
+    // Filter other users' brews by equipment match
+    return allBrews.filter(brew => {
+        if (brew.userId === userId) return false; // Skip own brews
+
+        const brewCoffee = coffeeById[brew.coffeeId];
+        const brewGrinder = grinderById[brew.grinderId];
+
+        const coffeeMatch = brewCoffee
+            ? userCoffeeKeys.has(`${brewCoffee.name?.toLowerCase()}|${brewCoffee.roastery?.toLowerCase()}`)
+            : false;
+
+        const grinderMatch = brewGrinder
+            ? userGrinderKeys.has(`${brewGrinder.name?.toLowerCase()}|${brewGrinder.brand?.toLowerCase()}|${brewGrinder.model?.toLowerCase()}`)
+            : false;
+
+        return coffeeMatch || grinderMatch;
+    });
+}
+
 
 export default function AdvisorScreen() {
     const theme = useTheme();
+    const { user } = useAuth();
     const [advice, setAdvice] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [selectedBrew, setSelectedBrew] = useState<BrewLog | null>(null);
@@ -125,17 +172,17 @@ export default function AdvisorScreen() {
     const [goal, setGoal] = useState('');
     const [modalVisible, setModalVisible] = useState(false);
 
-    // Removed loadLastBrew effect
-
     useFocusEffect(
         useCallback(() => {
             loadData();
-        }, [])
+        }, [user?.id])
     );
 
     const loadData = async () => {
+        if (!user?.id) return;
         const brewRepo = new BrewRepository();
-        const brews = await brewRepo.getAll();
+        // Load only user's brews for the UI selection
+        const brews = await brewRepo.getAll(user.id);
         brews.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setAllBrews(brews);
 
@@ -144,13 +191,13 @@ export default function AdvisorScreen() {
         }
 
         const coffeeRepo = new CoffeeRepository();
-        const allCoffees = await coffeeRepo.getAll();
+        const allCoffees = await coffeeRepo.getAll(user.id);
         const coffeeMap: Record<number, Coffee> = {};
         allCoffees.forEach(c => coffeeMap[c.id!] = c);
         setCoffees(coffeeMap);
 
         const grinderRepo = new GrinderRepository();
-        const allGrinders = await grinderRepo.getAll();
+        const allGrinders = await grinderRepo.getAll(user.id);
         const grinderMap: Record<number, Grinder> = {};
         allGrinders.forEach(g => grinderMap[g.id!] = g);
         setGrinders(grinderMap);
@@ -159,23 +206,55 @@ export default function AdvisorScreen() {
     const bodyLabel = (body: number) => body === 0 ? 'Light' : body === 1 ? 'Medium' : 'Heavy';
 
     const getAdvice = async () => {
-        if (!selectedBrew) return;
+        if (!selectedBrew || !user?.id) return;
         setLoading(true);
         setAdvice('');
 
         const brewRepo = new BrewRepository();
-        const history = await brewRepo.getAll();
+        const coffeeRepo = new CoffeeRepository();
+        const grinderRepo = new GrinderRepository();
+
+        // Load user's own brews as history
+        const userBrews = await brewRepo.getAll(user.id);
+
+        // Load ALL data globally for cross-user analysis
+        const globalBrews = await brewRepo.getAllGlobal();
+        const globalCoffees = await coffeeRepo.getAllGlobal();
+        const globalGrinders = await grinderRepo.getAllGlobal();
+
+        // User's own equipment
+        const userCoffees = await coffeeRepo.getAll(user.id);
+        const userGrinders = await grinderRepo.getAll(user.id);
+
+        // Find relevant cross-user brews
+        const crossUserBrews = findRelevantCrossUserBrews(
+            userCoffees,
+            userGrinders,
+            globalBrews,
+            globalCoffees,
+            globalGrinders,
+            user.id,
+        );
+
+        // Build full coffee/grinder maps for context (includes cross-user equipment)
+        const allCoffeeMap: Record<number, Coffee> = {};
+        globalCoffees.forEach(c => allCoffeeMap[c.id!] = c);
+        const allGrinderMap: Record<number, Grinder> = {};
+        globalGrinders.forEach(g => allGrinderMap[g.id!] = g);
 
         const context: AdviceContext = {
-            coffee: selectedBrew.coffeeId ? coffees[selectedBrew.coffeeId] : undefined,
-            grinder: selectedBrew.grinderId ? grinders[selectedBrew.grinderId] : undefined,
-            allCoffees: coffees,
-            allGrinders: grinders,
+            coffee: selectedBrew.coffeeId ? allCoffeeMap[selectedBrew.coffeeId] : undefined,
+            grinder: selectedBrew.grinderId ? allGrinderMap[selectedBrew.grinderId] : undefined,
+            allCoffees: allCoffeeMap,
+            allGrinders: allGrinderMap,
         };
+
+        // Combine user's history with relevant cross-user brews
+        const combinedHistory = [...userBrews, ...crossUserBrews];
 
         const result = await aiService.getAdvice(
             selectedBrew,
-            history,
+            combinedHistory,
             goal,
             context
         );
@@ -184,9 +263,10 @@ export default function AdvisorScreen() {
     };
 
     const handleGenerateData = async () => {
+        if (!user?.id) return;
         setLoading(true);
         try {
-            await generateMockData(50);
+            await generateMockData(50, user.id);
             alert('Generated 50 mock brews!');
             loadData();
         } catch (e) {

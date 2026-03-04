@@ -1,5 +1,6 @@
 export interface Coffee {
     id?: number;
+    userId?: number;
     name: string;
     roastery: string;
     origin?: string;

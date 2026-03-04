@@ -7,6 +7,7 @@ export interface Score {
 
 export interface BrewLog {
     id?: number;
+    userId?: number;
     coffeeId: number;
     grinderId: number;
     date: string; // ISO 8601

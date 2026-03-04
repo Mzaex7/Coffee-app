@@ -15,10 +15,12 @@ import { Coffee } from '../../src/domain/entities/Coffee';
 import { Grinder } from '../../src/domain/entities/Grinder';
 import { Ionicons } from '@expo/vector-icons';
 import { GrindSelector } from '../../src/presentation/components/GrindSelector';
+import { useAuth } from '../../src/domain/context/AuthContext';
 
 export default function BrewLogScreen() {
     const router = useRouter();
     const theme = useTheme();
+    const { user } = useAuth();
     const [coffees, setCoffees] = useState<Coffee[]>([]);
     const [grinders, setGrinders] = useState<Grinder[]>([]);
     const [showCoffeeModal, setShowCoffeeModal] = useState(false);
@@ -67,11 +69,12 @@ export default function BrewLogScreen() {
     useFocusEffect(
         useCallback(() => {
             const fetchData = async () => {
-                setCoffees(await new CoffeeRepository().getAll());
-                setGrinders(await new GrinderRepository().getAll());
+                if (!user?.id) return;
+                setCoffees(await new CoffeeRepository().getAll(user.id));
+                setGrinders(await new GrinderRepository().getAll(user.id));
             };
             fetchData();
-        }, [])
+        }, [user?.id])
     );
 
 
@@ -90,6 +93,9 @@ export default function BrewLogScreen() {
                 .setGrindSetting(grindSetting)
                 .setScore({ body, acidity, bitterness, tasteNotes })
                 .build();
+
+            // Set userId before saving
+            brew.userId = user?.id;
 
             await new BrewRepository().create(brew);
             alert('Brew Logged!');

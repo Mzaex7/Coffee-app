@@ -8,6 +8,7 @@ import { Coffee } from '../../domain/entities/Coffee';
 import { Button } from '../components/Button';
 import { Stack } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
+import { useAuth } from '../../domain/context/AuthContext';
 
 export const ManageCoffeesScreen = () => {
     const [coffees, setCoffees] = useState<Coffee[]>([]);
@@ -16,21 +17,23 @@ export const ManageCoffeesScreen = () => {
     const [roastery, setRoastery] = useState('');
     const repo = new CoffeeRepository();
     const theme = useTheme();
+    const { user } = useAuth();
 
     const loadCoffees = async () => {
-        const data = await repo.getAll();
+        if (!user?.id) return;
+        const data = await repo.getAll(user.id);
         setCoffees(data);
     };
 
     useFocusEffect(
         useCallback(() => {
             loadCoffees();
-        }, [])
+        }, [user?.id])
     );
 
     const handleAdd = async () => {
         if (!name) return;
-        await repo.create({ name, roastery: roastery || 'Unknown', origin: 'Unknown', process: 'Washed' });
+        await repo.create({ userId: user?.id, name, roastery: roastery || 'Unknown', origin: 'Unknown', process: 'Washed' });
         setModalVisible(false);
         setName('');
         setRoastery('');

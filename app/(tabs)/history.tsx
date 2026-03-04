@@ -6,9 +6,11 @@ import { BrewLog } from '../../src/domain/entities/BrewLog';
 import { CoffeeRepository } from '../../src/data/repositories/CoffeeRepository';
 import { Coffee } from '../../src/domain/entities/Coffee';
 import { useFocusEffect } from 'expo-router';
+import { useAuth } from '../../src/domain/context/AuthContext';
 
 export default function HistoryScreen() {
     const theme = useTheme();
+    const { user } = useAuth();
     const [brews, setBrews] = useState<BrewLog[]>([]);
     const [coffees, setCoffees] = useState<Record<number, Coffee>>({});
     const [refreshing, setRefreshing] = useState(false);
@@ -16,14 +18,15 @@ export default function HistoryScreen() {
     const [detailModalVisible, setDetailModalVisible] = useState(false);
 
     const loadData = async () => {
+        if (!user?.id) return;
         const brewRepo = new BrewRepository();
-        const allBrews = await brewRepo.getAll();
+        const allBrews = await brewRepo.getAll(user.id);
         // Sort by date descending
         allBrews.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setBrews(allBrews);
 
         const coffeeRepo = new CoffeeRepository();
-        const allCoffees = await coffeeRepo.getAll();
+        const allCoffees = await coffeeRepo.getAll(user.id);
         const coffeeMap: Record<number, Coffee> = {};
         allCoffees.forEach(c => coffeeMap[c.id!] = c);
         setCoffees(coffeeMap);
@@ -32,7 +35,7 @@ export default function HistoryScreen() {
     useFocusEffect(
         React.useCallback(() => {
             loadData();
-        }, [])
+        }, [user?.id])
     );
 
     const onRefresh = async () => {

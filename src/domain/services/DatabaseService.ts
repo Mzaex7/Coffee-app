@@ -14,11 +14,15 @@ class WebDatabaseAdapter implements DBInterface {
         const table = this.getTableName(sql);
         if (!table) return [];
         const data = this.getData(table);
-        // Basic filtering for WHERE id = ?
-        if (sql.toLowerCase().includes('where id =') && params.length > 0) {
-            const id = params[0];
-            return data.filter((item: any) => item.id === id) as T[];
+
+        // Extract WHERE conditions
+        const conditions = this.parseWhereConditions(sql, params);
+        if (conditions.length > 0) {
+            return data.filter((item: any) => {
+                return conditions.every(cond => item[cond.column] === cond.value);
+            }) as T[];
         }
+
         return data as T[];
     }
 
@@ -55,9 +59,11 @@ class WebDatabaseAdapter implements DBInterface {
             this.saveData(table, data);
             this.saveLastId(table, lastId);
         } else if (operation === 'DELETE') {
-            if (sql.toLowerCase().includes('where id =') && params.length > 0) {
-                const id = params[0];
-                data = data.filter((item: any) => item.id !== id);
+            const conditions = this.parseWhereConditions(sql, params);
+            if (conditions.length > 0) {
+                data = data.filter((item: any) =>
+                    !conditions.every(cond => item[cond.column] === cond.value)
+                );
                 this.saveData(table, data);
             } else {
                 // DELETE FROM table (no WHERE) — wipe all rows and reset counter
@@ -73,9 +79,35 @@ class WebDatabaseAdapter implements DBInterface {
 
     async execAsync(_sql: string): Promise<void> {
         // Initialize empty arrays in localStorage if missing
+        if (!localStorage.getItem('users')) localStorage.setItem('users', '[]');
         if (!localStorage.getItem('coffees')) localStorage.setItem('coffees', '[]');
         if (!localStorage.getItem('grinders')) localStorage.setItem('grinders', '[]');
         if (!localStorage.getItem('brew_logs')) localStorage.setItem('brew_logs', '[]');
+    }
+
+    /**
+     * Parse simple WHERE conditions from SQL.
+     * Supports: WHERE col1 = ? AND col2 = ?
+     */
+    private parseWhereConditions(sql: string, params: any[]): { column: string; value: any }[] {
+        const conditions: { column: string; value: any }[] = [];
+        const whereMatch = sql.toLowerCase().indexOf('where');
+        if (whereMatch === -1 || params.length === 0) return conditions;
+
+        const wherePart = sql.substring(whereMatch);
+        const condRegex = /(\w+)\s*=\s*\?/gi;
+        let match;
+        let paramIndex = 0;
+
+        while ((match = condRegex.exec(wherePart)) !== null && paramIndex < params.length) {
+            conditions.push({
+                column: match[1],
+                value: params[paramIndex],
+            });
+            paramIndex++;
+        }
+
+        return conditions;
     }
 
     private getTableName(sql: string): string | null {
@@ -147,28 +179,40 @@ class DatabaseService {
 
         await this.db.execAsync(`
       PRAGMA journal_mode = WAL;
-      
+
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS grinders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
         name TEXT NOT NULL,
         brand TEXT,
         model TEXT,
-        description TEXT
+        description TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       );
 
       CREATE TABLE IF NOT EXISTS coffees (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
         name TEXT NOT NULL,
         roastery TEXT NOT NULL,
         origin TEXT,
         variety TEXT,
         process TEXT,
         roast_date TEXT,
-        notes TEXT
+        notes TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id)
       );
 
       CREATE TABLE IF NOT EXISTS brew_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
         coffee_id INTEGER,
         grinder_id INTEGER,
         date TEXT NOT NULL,
@@ -181,6 +225,7 @@ class DatabaseService {
         rating_acidity INTEGER,
         rating_bitterness INTEGER,
         taste_notes TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (coffee_id) REFERENCES coffees(id),
         FOREIGN KEY (grinder_id) REFERENCES grinders(id)
       );

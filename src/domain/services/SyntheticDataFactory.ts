@@ -16,17 +16,18 @@ export class SyntheticDataFactory {
         this.brewRepo = new BrewRepository();
     }
 
-    async generateEssentialData(): Promise<void> {
-        const grinders = await this.grinderRepo.getAll();
+    async generateEssentialData(userId?: number): Promise<void> {
+        const grinders = userId ? await this.grinderRepo.getAll(userId) : await this.grinderRepo.getAll();
         if (grinders.length > 0) return; // Data already exists
 
-        const grinderId = await this.createGrinder();
-        const coffeeId = await this.createCoffee();
-        await this.createBrewLogs(grinderId, coffeeId);
+        const grinderId = await this.createGrinder(userId);
+        const coffeeId = await this.createCoffee(userId);
+        await this.createBrewLogs(grinderId, coffeeId, userId);
     }
 
-    private async createGrinder(): Promise<number> {
+    private async createGrinder(userId?: number): Promise<number> {
         const grinder: Grinder = {
+            userId,
             name: 'Comandante C40',
             brand: 'Comandante',
             model: 'C40 MK4',
@@ -35,8 +36,9 @@ export class SyntheticDataFactory {
         return await this.grinderRepo.create(grinder);
     }
 
-    private async createCoffee(): Promise<number> {
+    private async createCoffee(userId?: number): Promise<number> {
         const coffee: Coffee = {
+            userId,
             name: 'Ethiopia Yirgacheffe',
             roastery: 'The Barn',
             origin: 'Ethiopia',
@@ -48,8 +50,9 @@ export class SyntheticDataFactory {
         return await this.coffeeRepo.create(coffee);
     }
 
-    private async createBrewLogs(grinderId: number, coffeeId: number): Promise<void> {
+    private async createBrewLogs(grinderId: number, coffeeId: number, userId?: number): Promise<void> {
         const brew: BrewLog = {
+            userId,
             coffeeId,
             grinderId,
             date: new Date().toISOString(),

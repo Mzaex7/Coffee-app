@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Box, Text, useTheme } from '../../src/presentation/theme';
-import { RefreshControl, ScrollView } from 'react-native';
+import { RefreshControl, ScrollView, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { BrewRepository } from '../../src/data/repositories/BrewRepository';
 import { CoffeeRepository } from '../../src/data/repositories/CoffeeRepository';
@@ -8,10 +8,12 @@ import { BrewLog } from '../../src/domain/entities/BrewLog';
 import { Coffee } from '../../src/domain/entities/Coffee';
 import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { Button } from '../../src/presentation/components/Button';
+import { useAuth } from '../../src/domain/context/AuthContext';
 
 export default function DashboardScreen() {
     const theme = useTheme();
     const router = useRouter();
+    const { user, logout } = useAuth();
     const [lastBrew, setLastBrew] = useState<BrewLog | null>(null);
     const [lastBrewCoffee, setLastBrewCoffee] = useState<Coffee | null>(null);
 
@@ -24,11 +26,12 @@ export default function DashboardScreen() {
     const [refreshing, setRefreshing] = useState(false);
 
     const loadData = async () => {
+        if (!user?.id) return;
         const brewRepo = new BrewRepository();
         const coffeeRepo = new CoffeeRepository();
 
-        const allBrews = await brewRepo.getAll();
-        const allCoffees = await coffeeRepo.getAll();
+        const allBrews = await brewRepo.getAll(user.id);
+        const allCoffees = await coffeeRepo.getAll(user.id);
 
         setTotalBrews(allBrews.length);
         setBeansCount(allCoffees.length);
@@ -77,7 +80,7 @@ export default function DashboardScreen() {
     useFocusEffect(
         useCallback(() => {
             loadData();
-        }, [])
+        }, [user?.id])
     );
 
     const onRefresh = async () => {
@@ -94,24 +97,38 @@ export default function DashboardScreen() {
                 contentContainerStyle={{ padding: theme.spacing.m }}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
             >
-                <Box marginBottom="l" paddingTop="l">
-                    <Text
-                        variant="header"
-                        fontSize={48}
-                        color="primary"
-                        fontWeight="900"
-                        style={{ letterSpacing: -1 }}
+                <Box marginBottom="l" paddingTop="l" flexDirection="row" justifyContent="space-between" alignItems="flex-start">
+                    <Box flex={1}>
+                        <Text
+                            variant="header"
+                            fontSize={48}
+                            color="primary"
+                            fontWeight="900"
+                            style={{ letterSpacing: -1 }}
+                        >
+                            BrewRef
+                        </Text>
+                        <Text
+                            variant="body"
+                            color="textSecondary"
+                            fontSize={14}
+                            style={{ letterSpacing: 3, textTransform: 'uppercase', opacity: 0.7 }}
+                        >
+                            {user?.username ? `Hey, ${user.username}` : 'Your Coffee Journey'}
+                        </Text>
+                    </Box>
+                    <TouchableOpacity
+                        onPress={logout}
+                        style={{
+                            marginTop: 12,
+                            backgroundColor: theme.colors.surface,
+                            paddingHorizontal: 14,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                        }}
                     >
-                        BrewRef
-                    </Text>
-                    <Text
-                        variant="body"
-                        color="textSecondary"
-                        fontSize={14}
-                        style={{ letterSpacing: 3, textTransform: 'uppercase', opacity: 0.7 }}
-                    >
-                        Your Coffee Journey
-                    </Text>
+                        <Text variant="caption" color="textSecondary" fontWeight="bold">Logout</Text>
+                    </TouchableOpacity>
                 </Box>
 
                 {/* Stats Grid — 2×2 */}

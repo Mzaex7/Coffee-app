@@ -2,7 +2,16 @@ import { databaseService } from '../../domain/services/DatabaseService';
 import { Grinder } from '../../domain/entities/Grinder';
 
 export class GrinderRepository {
-    async getAll(): Promise<Grinder[]> {
+    async getAll(userId?: number): Promise<Grinder[]> {
+        const db = databaseService.getDatabase();
+        if (userId) {
+            return await db.getAllAsync<Grinder>('SELECT * FROM grinders WHERE user_id = ?', [userId]);
+        }
+        return await db.getAllAsync<Grinder>('SELECT * FROM grinders');
+    }
+
+    /** Get ALL grinders from ALL users — used by AI for cross-user analysis */
+    async getAllGlobal(): Promise<Grinder[]> {
         const db = databaseService.getDatabase();
         return await db.getAllAsync<Grinder>('SELECT * FROM grinders');
     }
@@ -15,8 +24,8 @@ export class GrinderRepository {
     async create(grinder: Grinder): Promise<number> {
         const db = databaseService.getDatabase();
         const result = await db.runAsync(
-            'INSERT INTO grinders (name, brand, model, description) VALUES (?, ?, ?, ?)',
-            [grinder.name, grinder.brand, grinder.model, grinder.description || null]
+            'INSERT INTO grinders (user_id, name, brand, model, description) VALUES (?, ?, ?, ?, ?)',
+            [grinder.userId || null, grinder.name, grinder.brand, grinder.model, grinder.description || null]
         );
         return result.lastInsertRowId;
     }

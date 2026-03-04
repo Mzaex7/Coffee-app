@@ -1,10 +1,17 @@
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { useTheme } from '../../src/presentation/theme';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
+import { useAuth } from '../../src/domain/context/AuthContext';
 
 export default function TabLayout() {
     const theme = useTheme();
+    const { user, isLoading } = useAuth();
+
+    // Auth gate: redirect to login if not authenticated
+    if (!isLoading && !user) {
+        return <Redirect href="/auth" />;
+    }
 
     return (
         <Tabs
@@ -33,6 +40,7 @@ export default function TabLayout() {
                 name="index"
                 options={{
                     title: 'Überblick',
+                    headerShown: false,
                     tabBarLabel: 'Home',
                     tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="home-analytics" size={size} color={color} />,
                 }}
