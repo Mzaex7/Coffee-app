@@ -33,6 +33,11 @@ export class BrewBuilder {
         return this;
     }
 
+    setRating(rating: number): BrewBuilder {
+        this.brew.rating = rating;
+        return this;
+    }
+
     setScore(score: Partial<Score>): BrewBuilder {
         this.brew.score = { ...this.brew.score!, ...score };
         return this;

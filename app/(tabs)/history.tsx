@@ -1,12 +1,36 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, RefreshControl, TouchableOpacity, Modal, Alert } from 'react-native';
-import { Box, Text, useTheme } from '../../src/presentation/theme';
+import React, { useState } from 'react';
+import { ScrollView, RefreshControl, TouchableOpacity, Alert, Platform } from 'react-native';
+import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
+import { BottomSheet } from '../../src/presentation/components/BottomSheet';
 import { BrewRepository } from '../../src/data/repositories/BrewRepository';
 import { BrewLog } from '../../src/domain/entities/BrewLog';
 import { CoffeeRepository } from '../../src/data/repositories/CoffeeRepository';
 import { Coffee } from '../../src/domain/entities/Coffee';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '../../src/domain/context/AuthContext';
+import { Chip } from '../../src/presentation/components/Chip';
+import { Button } from '../../src/presentation/components/Button';
+import { StarRating } from '../../src/presentation/components/StarRating';
+import { EmptyState } from '../../src/presentation/components/EmptyState';
+import { ScreenHeader } from '../../src/presentation/components/ScreenHeader';
+import { formatRatio, formatFlowRate, brewStyle } from '../../src/utils/brewMetrics';
+
+const BODY_LABELS = ['Watery', 'Light', 'Medium', 'Heavy', 'Syrupy'];
+const MONO = 'JetBrainsMono_400Regular';
+
+const shortDate = (iso: string) => {
+    const d = new Date(iso);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const bd = new Date(iso); bd.setHours(0, 0, 0, 0);
+    const diff = Math.round((today.getTime() - bd.getTime()) / 86400000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yest.';
+    return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+};
+
+// Rating (0-5) → badge accent: great = sage, good = amber, else muted.
+const ratingTone = (r?: number): 'accent' | 'primary' | 'textSecondary' =>
+    !r ? 'textSecondary' : r >= 4.5 ? 'accent' : r >= 3.5 ? 'primary' : 'textSecondary';
 
 export default function HistoryScreen() {
     const theme = useTheme();
@@ -16,17 +40,15 @@ export default function HistoryScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [selectedBrew, setSelectedBrew] = useState<BrewLog | null>(null);
     const [detailModalVisible, setDetailModalVisible] = useState(false);
+    const [filterCoffeeId, setFilterCoffeeId] = useState<number | 'all'>('all');
 
     const loadData = async () => {
         if (!user?.id) return;
-        const brewRepo = new BrewRepository();
-        const allBrews = await brewRepo.getAll(user.id);
-        // Sort by date descending
+        const allBrews = await new BrewRepository().getAll(user.id);
         allBrews.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setBrews(allBrews);
 
-        const coffeeRepo = new CoffeeRepository();
-        const allCoffees = await coffeeRepo.getAll(user.id);
+        const allCoffees = await new CoffeeRepository().getAll(user.id);
         const coffeeMap: Record<number, Coffee> = {};
         allCoffees.forEach(c => coffeeMap[c.id!] = c);
         setCoffees(coffeeMap);
@@ -46,24 +68,20 @@ export default function HistoryScreen() {
 
     const handleDelete = () => {
         if (!selectedBrew || !selectedBrew.id) return;
-        Alert.alert(
-            'Delete Brew Log',
-            'Are you sure you want to delete this brew log?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        const brewRepo = new BrewRepository();
-                        await brewRepo.delete(selectedBrew.id!);
-                        setDetailModalVisible(false);
-                        setSelectedBrew(null);
-                        loadData();
-                    },
-                },
-            ]
-        );
+        const doDelete = async () => {
+            await new BrewRepository().delete(selectedBrew.id!);
+            setDetailModalVisible(false);
+            setSelectedBrew(null);
+            loadData();
+        };
+        if (Platform.OS === 'web') {
+            doDelete();
+            return;
+        }
+        Alert.alert('Delete Brew Log', 'Are you sure you want to delete this brew log?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: doDelete },
+        ]);
     };
 
     const openDetail = (brew: BrewLog) => {
@@ -71,145 +89,132 @@ export default function HistoryScreen() {
         setDetailModalVisible(true);
     };
 
+    // Coffees that actually have brews, for filter chips.
+    const usedCoffeeIds = Array.from(new Set(brews.map(b => b.coffeeId)));
+    const visibleBrews = filterCoffeeId === 'all' ? brews : brews.filter(b => b.coffeeId === filterCoffeeId);
+
     return (
         <Box flex={1} backgroundColor="mainBackground">
+            <ScreenHeader title="Brews">
+                {usedCoffeeIds.length > 1 && (
+                    <Box marginTop="m">
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: theme.spacing.xs }}>
+                            <Chip label="All" tone="primary" selected={filterCoffeeId === 'all'} onPress={() => setFilterCoffeeId('all')} small />
+                            {usedCoffeeIds.map(id => (
+                                <Chip
+                                    key={id}
+                                    label={coffees[id]?.name || 'Unknown'}
+                                    tone="primary"
+                                    selected={filterCoffeeId === id}
+                                    onPress={() => setFilterCoffeeId(id)}
+                                    small
+                                />
+                            ))}
+                        </ScrollView>
+                    </Box>
+                )}
+            </ScreenHeader>
+
             <ScrollView
-                contentContainerStyle={{ padding: theme.spacing.m }}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130 }}
+                showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
             >
-                {brews.length === 0 ? (
-                    <Box padding="xl" alignItems="center">
-                        <Text variant="body" color="textSecondary">No brews logged yet.</Text>
+                {visibleBrews.length === 0 ? (
+                    <Box marginTop="xl">
+                        <EmptyState
+                            icon="history"
+                            title="No brews yet"
+                            subtitle="Your logged shots will appear here. Pull to refresh after logging."
+                        />
                     </Box>
                 ) : (
-                    brews.map((brew) => (
-                        <TouchableOpacity key={brew.id} onPress={() => openDetail(brew)} activeOpacity={0.7}>
-                            <Box
-                                backgroundColor="cardPrimaryBackground"
-                                padding="m"
-                                borderRadius={12}
-                                marginBottom="m"
-                                borderLeftWidth={4}
-                                borderLeftColor="primary"
-                            >
-                                <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="s">
-                                    <Text variant="subheader" fontSize={16} color="textPrimary">
-                                        {coffees[brew.coffeeId]?.name || 'Unknown Coffee'}
-                                    </Text>
-                                    <Text variant="caption" color="textSecondary">
-                                        {new Date(brew.date).toLocaleDateString()}
-                                    </Text>
-                                </Box>
-
-                                <Box flexDirection="row" gap="m" marginBottom="s">
-                                    <Text variant="body" fontSize={14}>
-                                        in: <Text variant="body" color="primary" fontWeight="bold">{brew.doseIn}g</Text>
-                                    </Text>
-                                    <Text variant="body" fontSize={14}>
-                                        out: <Text variant="body" color="primary" fontWeight="bold">{brew.doseOut}g</Text>
-                                    </Text>
-                                    <Text variant="body" fontSize={14}>
-                                        time: <Text variant="body" color="primary" fontWeight="bold">{brew.timeSeconds}s</Text>
-                                    </Text>
-                                </Box>
-
-                                {brew.score && (
-                                    <Box flexDirection="row" gap="s" flexWrap="wrap">
-                                        {brew.score.tasteNotes?.map((note, idx) => (
-                                            <Box key={idx} backgroundColor="mainBackground" paddingHorizontal="s" paddingVertical="xs" borderRadius={4}>
-                                                <Text variant="caption" fontSize={10} color="textSecondary">{note}</Text>
-                                            </Box>
-                                        ))}
+                    <Box gap="s">
+                        {visibleBrews.map((brew) => {
+                            const tone = ratingTone(brew.rating);
+                            const badgeColor = tone === 'accent' ? theme.colors.accent : tone === 'primary' ? theme.colors.primary : theme.colors.textSecondary;
+                            return (
+                                <TouchableOpacity key={brew.id} onPress={() => openDetail(brew)} activeOpacity={0.85}>
+                                    <Box flexDirection="row" alignItems="center" gap="m" backgroundColor="cardPrimaryBackground" borderWidth={1} borderColor="border" borderRadius={radii.l} padding="m">
+                                        <Box width={46} height={46} borderRadius={radii.m} backgroundColor="cardElevated" borderWidth={1} borderColor="border" alignItems="center" justifyContent="center">
+                                            <Text style={{ fontFamily: MONO, fontSize: 15, fontWeight: '700', color: badgeColor }}>
+                                                {brew.rating ? brew.rating.toFixed(1) : '–'}
+                                            </Text>
+                                        </Box>
+                                        <Box flex={1}>
+                                            <Text variant="title" fontSize={15} numberOfLines={1}>{coffees[brew.coffeeId]?.name || 'Unknown Coffee'}</Text>
+                                            <Text marginTop="xs" style={{ fontFamily: MONO, fontSize: 11.5 }} color="textSecondary">
+                                                {formatRatio(brew.doseIn, brew.doseOut)} · {brew.doseIn}/{brew.doseOut}g · {brew.timeSeconds}s
+                                            </Text>
+                                        </Box>
+                                        <Text style={{ fontFamily: MONO, fontSize: 11 }} color="textTertiary">{shortDate(brew.date)}</Text>
                                     </Box>
-                                )}
-                            </Box>
-                        </TouchableOpacity>
-                    ))
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </Box>
                 )}
             </ScrollView>
 
-            {/* Detail Modal */}
-            <Modal
-                visible={detailModalVisible}
-                animationType="slide"
-                transparent={true}
-                onRequestClose={() => setDetailModalVisible(false)}
-            >
-                <Box flex={1} justifyContent="center" alignItems="center" backgroundColor="overlayBackground" padding="m">
-                    <Box width="90%" backgroundColor="cardPrimaryBackground" borderRadius={16} padding="l" maxHeight="80%">
-                        {selectedBrew && (
-                            <ScrollView>
-                                <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="m">
-                                    <Text variant="header" fontSize={20}>{coffees[selectedBrew.coffeeId]?.name || 'Unknown'}</Text>
+            <BottomSheet visible={detailModalVisible} onClose={() => setDetailModalVisible(false)} maxHeightPercent={0.88}>
+                {selectedBrew && (
+                    <ScrollView contentContainerStyle={{ padding: theme.spacing.l }}>
+                                <Box flexDirection="row" justifyContent="space-between" alignItems="flex-start" marginBottom="xs">
+                                    <Box flex={1} marginRight="s">
+                                        <Text variant="subheader">{coffees[selectedBrew.coffeeId]?.name || 'Unknown'}</Text>
+                                        <Text variant="caption" color="textSecondary" marginTop="xs">{new Date(selectedBrew.date).toLocaleString()}</Text>
+                                    </Box>
                                     <TouchableOpacity onPress={() => setDetailModalVisible(false)}>
                                         <Text variant="body" color="textSecondary">Close</Text>
                                     </TouchableOpacity>
                                 </Box>
 
-                                <Text variant="caption" color="textSecondary" marginBottom="l">
-                                    {new Date(selectedBrew.date).toLocaleString()}
-                                </Text>
+                                {selectedBrew.rating ? (
+                                    <Box marginTop="m" marginBottom="s">
+                                        <StarRating value={selectedBrew.rating} readonly size={24} />
+                                    </Box>
+                                ) : null}
 
-                                <Box flexDirection="row" flexWrap="wrap" gap="l" marginBottom="l">
-                                    <Box>
-                                        <Text variant="caption" color="textSecondary">Dose In</Text>
-                                        <Text variant="subheader">{selectedBrew.doseIn}g</Text>
-                                    </Box>
-                                    <Box>
-                                        <Text variant="caption" color="textSecondary">Dose Out</Text>
-                                        <Text variant="subheader">{selectedBrew.doseOut}g</Text>
-                                    </Box>
-                                    <Box>
-                                        <Text variant="caption" color="textSecondary">Time</Text>
-                                        <Text variant="subheader">{selectedBrew.timeSeconds}s</Text>
-                                    </Box>
-                                    <Box>
-                                        <Text variant="caption" color="textSecondary">Ratio</Text>
-                                        <Text variant="subheader">1:{(selectedBrew.doseOut / selectedBrew.doseIn).toFixed(1)}</Text>
-                                    </Box>
-                                    <Box>
-                                        <Text variant="caption" color="textSecondary">Grind</Text>
-                                        <Text variant="subheader">{selectedBrew.grindSetting}</Text>
-                                    </Box>
+                                <Box flexDirection="row" flexWrap="wrap" gap="l" marginTop="l" marginBottom="l">
+                                    <Stat label="Dose In" value={`${selectedBrew.doseIn}g`} />
+                                    <Stat label="Yield" value={`${selectedBrew.doseOut}g`} />
+                                    <Stat label="Time" value={`${selectedBrew.timeSeconds}s`} />
+                                    <Stat label="Ratio" value={formatRatio(selectedBrew.doseIn, selectedBrew.doseOut)} />
+                                    <Stat label="Flow" value={formatFlowRate(selectedBrew.doseOut, selectedBrew.timeSeconds)} />
+                                    <Stat label="Style" value={brewStyle(selectedBrew.doseIn, selectedBrew.doseOut)} />
+                                    {selectedBrew.grindSetting ? <Stat label="Grind" value={selectedBrew.grindSetting} /> : null}
+                                    {selectedBrew.temperature ? <Stat label="Temp" value={`${selectedBrew.temperature}°C`} /> : null}
                                 </Box>
 
-                                <Box marginBottom="l">
-                                    <Text variant="subheader" marginBottom="s" fontSize={16}>Taste Profile</Text>
-                                    <Text variant="body">Body: {['Watery', 'Light', 'Medium', 'Heavy', 'Syrupy'][selectedBrew.score.body] || selectedBrew.score.body}</Text>
-                                    <Text variant="body">Acidity: {selectedBrew.score.acidity}/10</Text>
-                                    <Text variant="body">Bitterness: {selectedBrew.score.bitterness}/10</Text>
+                                <Text variant="title" marginBottom="s">Taste Profile</Text>
+                                <Box marginBottom="l" gap="xs">
+                                    <Text variant="body" color="textSecondary">Body: {BODY_LABELS[selectedBrew.score.body] || selectedBrew.score.body}</Text>
+                                    <Text variant="body" color="textSecondary">Acidity: {selectedBrew.score.acidity}/10</Text>
+                                    <Text variant="body" color="textSecondary">Bitterness: {selectedBrew.score.bitterness}/10</Text>
                                 </Box>
 
                                 {selectedBrew.score.tasteNotes && selectedBrew.score.tasteNotes.length > 0 && (
                                     <Box marginBottom="l">
-                                        <Text variant="subheader" marginBottom="s" fontSize={16}>Notes</Text>
-                                        <Box flexDirection="row" flexWrap="wrap" gap="s">
+                                        <Text variant="title" marginBottom="s">Notes</Text>
+                                        <Box flexDirection="row" flexWrap="wrap" gap="xs">
                                             {selectedBrew.score.tasteNotes.map((note, idx) => (
-                                                <Box key={idx} backgroundColor="mainBackground" paddingHorizontal="m" paddingVertical="s" borderRadius={6}>
-                                                    <Text variant="body" fontSize={12}>{note}</Text>
-                                                </Box>
+                                                <Chip key={idx} label={note} small />
                                             ))}
                                         </Box>
                                     </Box>
                                 )}
 
-                                <Box height={20} />
-                                <TouchableOpacity
-                                    onPress={handleDelete}
-                                    style={{
-                                        backgroundColor: theme.colors.error,
-                                        padding: 15,
-                                        borderRadius: 8,
-                                        alignItems: 'center'
-                                    }}
-                                >
-                                    <Text variant="body" color="textPrimary" fontWeight="bold">Delete Log</Text>
-                                </TouchableOpacity>
-                            </ScrollView>
-                        )}
-                    </Box>
-                </Box>
-            </Modal>
+                        <Button label="Delete Log" variant="danger" onPress={handleDelete} />
+                    </ScrollView>
+                )}
+            </BottomSheet>
         </Box>
     );
 }
+
+const Stat = ({ label, value }: { label: string; value: string }) => (
+    <Box>
+        <Text variant="label" textTransform="uppercase" marginBottom="xs">{label}</Text>
+        <Text variant="title">{value}</Text>
+    </Box>
+);

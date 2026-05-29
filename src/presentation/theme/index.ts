@@ -1,43 +1,59 @@
 import { createTheme, createBox, createText, useTheme as useRestyleTheme } from '@shopify/restyle';
 
+// ── BrewRef "Crema" palette ──────────────────────────────────────────
+// Warm espresso-toned dark theme. The neutrals are brown-tinted (not grey),
+// accented with crema amber and a calm sage. Mirrors the finalized design.
 const palette = {
-    // Backgrounds — spaced for clear layering
-    onyx: '#0E0E0E',       // deepest background
-    graphite: '#1A1A1A',   // card background — more contrast from onyx
-    iron: '#2C2C2C',       // surface/elevated elements
+    // Backgrounds — warm, layered from deepest to most raised
+    espressoBlack: '#0E0C0A',  // deepest background
+    bean: '#1A150F',           // card background — warm dark brown
+    grounds: '#251E15',        // elevated card / secondary surface
+    crust: '#2E2519',          // most-raised surface (segments, icon tiles)
 
-    // Text
-    cream: '#F5F0EB',      // primary text — warm white
-    mist: '#9E9E9E',       // secondary text — clearly dimmer
+    // Text — warm cream → taupe → muted brown-grey
+    cream: '#F4EEE5',          // primary text
+    taupe: '#A89E90',          // secondary text
+    stone: '#6E665C',          // tertiary / labels
 
-    // Accent — coffee-toned, brightened for visibility
-    espresso: '#D4943A',   // primary — warm amber, golden not brown
-    bronze: '#DBA04D',     // secondary — bright gold
-    sage: '#8F9779',       // accent — earthy green
+    // Accent — crema amber + sage
+    amber: '#E6A444',          // primary — crema gold
+    amberDeep: '#C07E2C',      // secondary — deep amber (gradient end)
+    sage: '#9AA37F',           // accent — calm green (good shots)
+    onAmber: '#1A120A',        // text/icon on amber surfaces
 
     // Functional
     white: '#FFFFFF',
     black: '#000000',
     transparent: 'transparent',
     error: '#FF453A',
-    success: '#4CAF50',
+    success: '#9AA37F',
 };
 
 const theme = createTheme({
     colors: {
-        mainBackground: palette.onyx,
-        cardPrimaryBackground: palette.graphite,
+        mainBackground: palette.espressoBlack,
+        cardPrimaryBackground: palette.bean,
+        cardElevated: palette.grounds,
         textPrimary: palette.cream,
-        textSecondary: palette.mist,
-        primary: palette.espresso,
-        secondary: palette.bronze,
-        surface: palette.iron,
+        textSecondary: palette.taupe,
+        textTertiary: palette.stone,
+        primary: palette.amber,
+        secondary: palette.amberDeep,
+        surface: palette.crust,
         accent: palette.sage,
+        gold: palette.amber,
+        onPrimary: palette.onAmber,
         error: palette.error,
         success: palette.success,
         transparent: palette.transparent,
         black: palette.black,
         white: palette.white,
+        border: 'rgba(255,255,255,0.08)',
+        borderStrong: 'rgba(255,255,255,0.16)',
+        borderWeak: 'rgba(255,255,255,0.05)',
+        primaryMuted: 'rgba(230,164,68,0.14)',
+        successMuted: 'rgba(154,163,127,0.18)',
+        errorMuted: 'rgba(255,69,58,0.14)',
         overlayBackground: 'rgba(0,0,0,0.6)',
     },
     spacing: {
@@ -46,8 +62,15 @@ const theme = createTheme({
         m: 16,
         l: 24,
         xl: 40,
+        xxl: 56,
     },
     textVariants: {
+        hero: {
+            fontFamily: 'Inter_700Bold',
+            fontWeight: '900',
+            fontSize: 44,
+            color: 'textPrimary',
+        },
         header: {
             fontFamily: 'Inter_700Bold',
             fontWeight: 'bold',
@@ -57,8 +80,14 @@ const theme = createTheme({
         subheader: {
             fontFamily: 'Inter_600SemiBold',
             fontWeight: '600',
-            fontSize: 28,
-            color: 'textSecondary',
+            fontSize: 22,
+            color: 'textPrimary',
+        },
+        title: {
+            fontFamily: 'Inter_600SemiBold',
+            fontWeight: '600',
+            fontSize: 18,
+            color: 'textPrimary',
         },
         body: {
             fontFamily: 'Inter_400Regular',
@@ -66,10 +95,22 @@ const theme = createTheme({
             lineHeight: 24,
             color: 'textPrimary',
         },
+        label: {
+            fontFamily: 'Inter_600SemiBold',
+            fontWeight: '600',
+            fontSize: 11,
+            color: 'textSecondary',
+        },
         caption: {
             fontFamily: 'Inter_400Regular',
             fontSize: 12,
             color: 'textSecondary',
+        },
+        stat: {
+            fontFamily: 'Inter_700Bold',
+            fontWeight: '900',
+            fontSize: 26,
+            color: 'textPrimary',
         },
         mono: {
             fontFamily: 'JetBrainsMono_400Regular',
@@ -92,5 +133,34 @@ export type Theme = typeof theme;
 export const Box = createBox<Theme>();
 export const Text = createText<Theme>();
 export const useTheme = () => useRestyleTheme<Theme>();
+
+// Numeric corner-radius scale (Restyle's borderRadius prop takes raw numbers here).
+// Tuned to the Crema design: soft note chips → rounded cards → hero panels.
+export const radii = {
+    xs: 7,
+    s: 11,
+    m: 14,
+    l: 18,
+    xl: 22,
+    full: 999,
+} as const;
+
+// Reusable elevation preset for cards / floating surfaces.
+export const cardShadow = {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 4,
+};
+
+// Glow preset for the amber FAB / primary floating actions.
+export const amberGlow = {
+    shadowColor: '#C07E2C',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 8,
+};
 
 export default theme;

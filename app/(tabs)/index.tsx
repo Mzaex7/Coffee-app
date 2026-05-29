@@ -1,87 +1,47 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Box, Text, useTheme } from '../../src/presentation/theme';
+import React, { useState, useCallback } from 'react';
+import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
 import { RefreshControl, ScrollView, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { BrewRepository } from '../../src/data/repositories/BrewRepository';
 import { CoffeeRepository } from '../../src/data/repositories/CoffeeRepository';
 import { BrewLog } from '../../src/domain/entities/BrewLog';
 import { Coffee } from '../../src/domain/entities/Coffee';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { Button } from '../../src/presentation/components/Button';
+import { StatCard } from '../../src/presentation/components/StatCard';
+import { ActivityChart } from '../../src/presentation/components/ActivityChart';
+import { ScreenHeader } from '../../src/presentation/components/ScreenHeader';
 import { useAuth } from '../../src/domain/context/AuthContext';
+import { formatRatio } from '../../src/utils/brewMetrics';
+import { getFreshness } from '../../src/utils/freshness';
+
+const ACTIVITY_DAYS = 14;
+
+const MONO = 'JetBrainsMono_400Regular';
+
+const greeting = () => {
+    const h = new Date().getHours();
+    return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+};
 
 export default function DashboardScreen() {
     const theme = useTheme();
     const router = useRouter();
-    const { user, logout } = useAuth();
-    const [lastBrew, setLastBrew] = useState<BrewLog | null>(null);
-    const [lastBrewCoffee, setLastBrewCoffee] = useState<Coffee | null>(null);
+    const { user } = useAuth();
 
-    // Stats State
-    const [totalBrews, setTotalBrews] = useState(0);
-    const [beansCount, setBeansCount] = useState(0);
-    const [daysSinceLastBrew, setDaysSinceLastBrew] = useState(0);
-    const [topCoffeeName, setTopCoffeeName] = useState('-');
-
+    const [brews, setBrews] = useState<BrewLog[]>([]);
+    const [coffees, setCoffees] = useState<Coffee[]>([]);
     const [refreshing, setRefreshing] = useState(false);
 
     const loadData = async () => {
         if (!user?.id) return;
-        const brewRepo = new BrewRepository();
-        const coffeeRepo = new CoffeeRepository();
-
-        const allBrews = await brewRepo.getAll(user.id);
-        const allCoffees = await coffeeRepo.getAll(user.id);
-
-        setTotalBrews(allBrews.length);
-        setBeansCount(allCoffees.length);
-
-        if (allBrews.length > 0) {
-            // Sort by date desc
-            allBrews.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            const last = allBrews[0];
-            setLastBrew(last);
-
-            // Find Last Brew Coffee
-            const coffee = allCoffees.find(c => c.id === last.coffeeId);
-            setLastBrewCoffee(coffee || null);
-
-            // Calculate Days Since
-            const lastDate = new Date(last.date);
-            const now = new Date();
-            const diffTime = Math.abs(now.getTime() - lastDate.getTime());
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            setDaysSinceLastBrew(diffDays);
-
-            // Calculate Top Coffee
-            const coffeeCounts: Record<number, number> = {};
-            allBrews.forEach(b => {
-                coffeeCounts[b.coffeeId] = (coffeeCounts[b.coffeeId] || 0) + 1;
-            });
-            let maxId = -1;
-            let maxCount = -1;
-            for (const [id, count] of Object.entries(coffeeCounts)) {
-                if (count > maxCount) {
-                    maxCount = count;
-                    maxId = Number(id);
-                }
-            }
-            const topCoffee = allCoffees.find(c => c.id === maxId);
-            setTopCoffeeName(topCoffee?.name || '-');
-
-        } else {
-            setLastBrew(null);
-            setLastBrewCoffee(null);
-            setDaysSinceLastBrew(0);
-            setTopCoffeeName('-');
-        }
+        const allBrews = await new BrewRepository().getAll(user.id);
+        allBrews.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setBrews(allBrews);
+        setCoffees(await new CoffeeRepository().getAll(user.id));
     };
 
-    useFocusEffect(
-        useCallback(() => {
-            loadData();
-        }, [user?.id])
-    );
+    useFocusEffect(useCallback(() => { loadData(); }, [user?.id]));
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -89,179 +49,156 @@ export default function DashboardScreen() {
         setRefreshing(false);
     };
 
+    const coffeeById: Record<number, Coffee> = {};
+    coffees.forEach(c => { if (c.id) coffeeById[c.id] = c; });
 
+    const lastBrew = brews[0] ?? null;
+    const lastBrewCoffee = lastBrew ? coffeeById[lastBrew.coffeeId] : undefined;
+    const lastFresh = getFreshness(lastBrewCoffee?.roastDate);
+
+    const ratedBrews = brews.filter(b => (b.rating ?? 0) > 0);
+    const avgRating = ratedBrews.length
+        ? (ratedBrews.reduce((s, b) => s + (b.rating ?? 0), 0) / ratedBrews.length)
+        : 0;
+
+    // Most-logged coffee → "dial in again" suggestion.
+    const coffeeCounts: Record<number, number> = {};
+    brews.forEach(b => { coffeeCounts[b.coffeeId] = (coffeeCounts[b.coffeeId] || 0) + 1; });
+    let topCoffeeName = '';
+    let topMax = 0;
+    Object.entries(coffeeCounts).forEach(([id, count]) => {
+        if (count > topMax) { topMax = count; topCoffeeName = coffeeById[Number(id)]?.name || ''; }
+    });
+
+    // 14-day activity (oldest → newest)
+    const activity = new Array(ACTIVITY_DAYS).fill(0);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    brews.forEach(b => {
+        const d = new Date(b.date);
+        d.setHours(0, 0, 0, 0);
+        const daysAgo = Math.floor((startOfToday.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysAgo >= 0 && daysAgo < ACTIVITY_DAYS) activity[ACTIVITY_DAYS - 1 - daysAgo] += 1;
+    });
+    const weekCount = activity.reduce((s, v) => s + v, 0);
+
+    // Hero meta strings
+    let heroDate = '';
+    if (lastBrew) {
+        const d = new Date(lastBrew.date);
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const bd = new Date(lastBrew.date); bd.setHours(0, 0, 0, 0);
+        heroDate = bd.getTime() === today.getTime()
+            ? `Today · ${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+            : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    }
+    const heroRight = lastBrew
+        ? [lastBrew.grindSetting ? `Grind ${lastBrew.grindSetting}` : null, lastBrew.temperature ? `${lastBrew.temperature}°` : null]
+            .filter(Boolean).join(' · ')
+        : '';
+
+    const monoLabel = (t: string, color: 'primary' | 'textTertiary' | 'textSecondary' = 'textTertiary') => (
+        <Text style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 1 }} color={color} textTransform="uppercase">{t}</Text>
+    );
+
+    const Metric = ({ v, l }: { v: string; l: string }) => (
+        <Box>
+            <Text color="textPrimary" style={{ fontFamily: MONO, fontSize: 19, fontWeight: '600' }}>{v}</Text>
+            {monoLabel(l)}
+        </Box>
+    );
 
     return (
         <Box flex={1} backgroundColor="mainBackground">
+            <ScreenHeader
+                eyebrow={greeting()}
+                title={user?.username || 'Welcome'}
+                titleSize={30}
+                right={
+                    <TouchableOpacity onPress={() => router.push('/settings')} hitSlop={8} activeOpacity={0.8}>
+                        <Box width={42} height={42} borderRadius={radii.m} backgroundColor="cardElevated" borderWidth={1} borderColor="border" alignItems="center" justifyContent="center">
+                            <Ionicons name="person" size={20} color={theme.colors.textSecondary} />
+                        </Box>
+                    </TouchableOpacity>
+                }
+            />
+
             <ScrollView
-                contentContainerStyle={{ padding: theme.spacing.m }}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingBottom: 130 }}
+                showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
             >
-                <Box marginBottom="l" paddingTop="l" flexDirection="row" justifyContent="space-between" alignItems="flex-start">
-                    <Box flex={1}>
-                        <Text
-                            variant="header"
-                            fontSize={48}
-                            color="primary"
-                            fontWeight="900"
-                            style={{ letterSpacing: -1 }}
-                        >
-                            BrewRef
-                        </Text>
-                        <Text
-                            variant="body"
-                            color="textSecondary"
-                            fontSize={14}
-                            style={{ letterSpacing: 3, textTransform: 'uppercase', opacity: 0.7 }}
-                        >
-                            {user?.username ? `Hey, ${user.username}` : 'Your Coffee Journey'}
-                        </Text>
-                    </Box>
-                    <TouchableOpacity
-                        onPress={logout}
-                        style={{
-                            marginTop: 12,
-                            backgroundColor: theme.colors.surface,
-                            paddingHorizontal: 14,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                        }}
-                    >
-                        <Text variant="caption" color="textSecondary" fontWeight="bold">Logout</Text>
-                    </TouchableOpacity>
-                </Box>
-
-                {/* Stats Grid — 2×2 */}
-                <Box marginBottom="l">
-                    {/* Row 1 */}
-                    <Box flexDirection="row" gap="m" marginBottom="m">
-                        {/* Beans Stashed */}
-                        <Box
-                            flex={1}
-                            backgroundColor="cardPrimaryBackground"
-                            padding="m"
-                            borderRadius={16}
-                            alignItems="flex-start"
-                            justifyContent="space-between"
-                            height={110}
-                        >
-                            <MaterialCommunityIcons name="seed-outline" size={28} color={theme.colors.primary} />
-                            <Box>
-                                <Text variant="header" fontSize={24}>{beansCount}</Text>
-                                <Text variant="caption" color="textSecondary">Beans Stashed</Text>
-                            </Box>
-                        </Box>
-
-                        {/* Days Since */}
-                        <Box
-                            flex={1}
-                            backgroundColor="cardPrimaryBackground"
-                            padding="m"
-                            borderRadius={16}
-                            alignItems="flex-start"
-                            justifyContent="space-between"
-                            height={110}
-                        >
-                            <Feather name="calendar" size={26} color={theme.colors.secondary} />
-                            <Box>
-                                <Text variant="header" fontSize={24}>{daysSinceLastBrew}d</Text>
-                                <Text variant="caption" color="textSecondary">Since Last Brew</Text>
-                            </Box>
-                        </Box>
-                    </Box>
-
-                    {/* Row 2 */}
-                    <Box flexDirection="row" gap="m">
-                        {/* Total Brews */}
-                        <Box
-                            flex={1}
-                            backgroundColor="cardPrimaryBackground"
-                            padding="m"
-                            borderRadius={16}
-                            alignItems="flex-start"
-                            justifyContent="space-between"
-                            height={110}
-                        >
-                            <MaterialCommunityIcons name="coffee-outline" size={28} color={theme.colors.accent} />
-                            <Box>
-                                <Text variant="header" fontSize={24}>{totalBrews}</Text>
-                                <Text variant="caption" color="textSecondary">Total Brews</Text>
-                            </Box>
-                        </Box>
-
-                        {/* Top Coffee */}
-                        <Box
-                            flex={1}
-                            backgroundColor="cardPrimaryBackground"
-                            padding="m"
-                            borderRadius={16}
-                            alignItems="flex-start"
-                            justifyContent="space-between"
-                            height={110}
-                        >
-                            <MaterialCommunityIcons name="trophy-outline" size={28} color="#FFD700" />
-                            <Box>
-                                <Text variant="subheader" fontSize={18} numberOfLines={1}>{topCoffeeName}</Text>
-                                <Text variant="caption" color="textSecondary">Top Coffee</Text>
-                            </Box>
-                        </Box>
-                    </Box>
-                </Box>
-
-                <Text variant="subheader" marginBottom="m">Last Brew</Text>
+                {/* Hero — last shot */}
                 {lastBrew ? (
-                    <Box backgroundColor="cardPrimaryBackground" padding="l" borderRadius={20} marginBottom="l">
-                        <Box flexDirection="row" justifyContent="space-between" alignItems="flex-start" marginBottom="s">
-                            <Box flex={1}>
-                                <Text variant="caption" color="textSecondary" textTransform="uppercase" letterSpacing={1} marginBottom="xs">
-                                    {new Date(lastBrew.date).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}
-                                </Text>
-                                <Text variant="subheader" fontSize={22} color="textPrimary" fontWeight="bold">
-                                    {lastBrewCoffee?.name || 'Unknown Coffee'}
-                                </Text>
-                                {lastBrewCoffee?.roastery && (
-                                    <Text variant="body" color="textSecondary" fontSize={14}>
-                                        {lastBrewCoffee.roastery}
-                                    </Text>
-                                )}
+                    <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/(tabs)/history')}>
+                        <Box backgroundColor="cardElevated" borderRadius={radii.xl} borderWidth={1} borderColor="border" padding="m">
+                            <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+                                {monoLabel(`Last shot · ${heroDate}`, 'primary')}
+                                {heroRight ? <Text style={{ fontFamily: MONO, fontSize: 12 }} color="textSecondary">{heroRight}</Text> : null}
                             </Box>
-                            {lastBrew.score && (
-                                <Box backgroundColor="mainBackground" paddingHorizontal="m" paddingVertical="xs" borderRadius={12}>
-                                    <Text variant="subheader" fontSize={18} color="primary">
-                                        {(lastBrew.score.acidity + lastBrew.score.bitterness) / 2}/10
+                            <Text color="textPrimary" marginTop="s" style={{ fontFamily: 'Inter_700Bold', fontSize: 22, letterSpacing: -0.3 }} numberOfLines={1}>
+                                {lastBrewCoffee?.name || 'Unknown Coffee'}
+                            </Text>
+                            <Box flexDirection="row" alignItems="center" gap="s">
+                                <Text variant="caption" color="textSecondary">{lastBrewCoffee?.roastery || '—'}</Text>
+                                {lastFresh ? <Text variant="caption" style={{ color: lastFresh.tone === 'neutral' ? theme.colors.textSecondary : theme.colors[lastFresh.tone] }}>· {lastFresh.label}</Text> : null}
+                            </Box>
+
+                            <Box flexDirection="row" alignItems="flex-end" gap="l" marginTop="l">
+                                <Metric v={`${lastBrew.doseIn}g`} l="dose" />
+                                <Feather name="arrow-right" size={16} color={theme.colors.textTertiary} style={{ marginBottom: 14 }} />
+                                <Metric v={`${lastBrew.doseOut}g`} l="yield" />
+                                <Box flex={1} />
+                                <Box alignItems="flex-end">
+                                    <Text color="primary" style={{ fontFamily: MONO, fontSize: 30, fontWeight: '700', lineHeight: 32 }}>
+                                        {formatRatio(lastBrew.doseIn, lastBrew.doseOut)}
+                                    </Text>
+                                    <Text style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 1 }} color="textTertiary" textTransform="uppercase">
+                                        {lastBrew.timeSeconds}s{lastBrew.rating ? ` · ${lastBrew.rating}/5` : ''}
                                     </Text>
                                 </Box>
-                            )}
-                        </Box>
-
-                        <Box height={1} backgroundColor="surface" marginVertical="m" />
-
-                        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-                            <Box>
-                                <Text variant="body" fontWeight="bold" fontSize={18}>{lastBrew.doseIn}g <Text fontWeight="normal" color="textSecondary" fontSize={14}>in</Text></Text>
-                            </Box>
-                            <Feather name="arrow-right" size={20} color={theme.colors.textSecondary} />
-                            <Box>
-                                <Text variant="body" fontWeight="bold" fontSize={18}>{lastBrew.doseOut}g <Text fontWeight="normal" color="textSecondary" fontSize={14}>out</Text></Text>
-                            </Box>
-                            <Box width={1} height={20} backgroundColor="surface" />
-                            <Box flexDirection="row" alignItems="center" gap="xs">
-                                <Feather name="clock" size={16} color={theme.colors.textSecondary} />
-                                <Text variant="body" fontWeight="bold" fontSize={18}>{lastBrew.timeSeconds}s</Text>
                             </Box>
                         </Box>
-                    </Box>
+                    </TouchableOpacity>
                 ) : (
-                    <Box backgroundColor="cardPrimaryBackground" padding="l" borderRadius={16} alignItems="center" marginBottom="l">
+                    <Box backgroundColor="cardElevated" borderRadius={radii.xl} borderWidth={1} borderColor="border" padding="l" alignItems="center">
                         <Text variant="body" color="textSecondary" textAlign="center" marginBottom="m">
-                            No brews recorded yet. Start your journey by logging your first cup!
+                            No brews yet. Pull the amber button to log your first shot.
                         </Text>
-                        <Button label="Log a Brew" onPress={() => router.push('/(tabs)/log')} variant="primary" />
+                        <Box width="100%">
+                            <Button label="Log a brew" onPress={() => router.push('/(tabs)/log')} icon={<Ionicons name="add-circle" size={19} color={theme.colors.onPrimary} />} />
+                        </Box>
                     </Box>
                 )}
 
+                {/* Stats */}
+                <Box flexDirection="row" gap="s" marginTop="m">
+                    <StatCard icon={<MaterialCommunityIcons name="fire" size={20} color={theme.colors.primary} />} value={brews.length} label="Total brews" />
+                    <StatCard icon={<MaterialCommunityIcons name="leaf" size={20} color={theme.colors.accent} />} value={coffees.length} label="Beans" />
+                    <StatCard icon={<MaterialCommunityIcons name="star" size={20} color={theme.colors.gold} />} value={avgRating ? avgRating.toFixed(1) : '–'} label="Avg rating" />
+                </Box>
 
+                {/* Activity */}
+                {brews.length > 0 && (
+                    <Box marginTop="m" backgroundColor="cardPrimaryBackground" borderRadius={radii.l} borderWidth={1} borderColor="border" padding="m">
+                        <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="s">
+                            {monoLabel('Last 14 days')}
+                            <Text style={{ fontFamily: MONO, fontSize: 11 }} color="textSecondary">{weekCount} shot{weekCount === 1 ? '' : 's'}</Text>
+                        </Box>
+                        <ActivityChart values={activity} />
+                    </Box>
+                )}
 
+                {/* Dial in again */}
+                {topCoffeeName ? (
+                    <Box marginTop="m" backgroundColor="cardPrimaryBackground" borderRadius={radii.l} borderWidth={1} borderColor="border" padding="m">
+                        <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="m">
+                            <Text variant="body" fontWeight="600" color="textPrimary">Dial in again</Text>
+                            <Text style={{ fontFamily: MONO }} color="primary" numberOfLines={1}>{topCoffeeName}</Text>
+                        </Box>
+                        <Button label="Log a brew" onPress={() => router.push('/(tabs)/log')} icon={<Ionicons name="add-circle" size={19} color={theme.colors.onPrimary} />} />
+                    </Box>
+                ) : null}
             </ScrollView>
         </Box>
     );

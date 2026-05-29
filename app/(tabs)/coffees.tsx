@@ -1,2 +1,2 @@
-import { ManageCoffeesScreen } from '../../src/presentation/screens/ManageCoffeesScreen';
-export default ManageCoffeesScreen;
+import { ShelfScreen } from '../../src/presentation/screens/ShelfScreen';
+export default ShelfScreen;

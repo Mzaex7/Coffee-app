@@ -12,6 +12,7 @@ interface BrewLogRow {
     time_seconds: number;
     temperature: number | null;
     grind_setting: string | null;
+    rating: number | null;
     rating_body: number;
     rating_acidity: number;
     rating_bitterness: number;
@@ -41,12 +42,12 @@ export class BrewRepository {
         const result = await db.runAsync(
             `INSERT INTO brew_logs (
         user_id, coffee_id, grinder_id, date, dose_in, dose_out, time_seconds,
-        temperature, grind_setting, rating_body, rating_acidity, rating_bitterness, taste_notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        temperature, grind_setting, rating, rating_body, rating_acidity, rating_bitterness, taste_notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 brew.userId || null,
                 brew.coffeeId, brew.grinderId, brew.date, brew.doseIn, brew.doseOut, brew.timeSeconds,
-                brew.temperature || null, brew.grindSetting || null,
+                brew.temperature || null, brew.grindSetting || null, brew.rating ?? null,
                 brew.score.body, brew.score.acidity, brew.score.bitterness, JSON.stringify(brew.score.tasteNotes)
             ]
         );
@@ -70,6 +71,7 @@ export class BrewRepository {
             timeSeconds: row.time_seconds,
             temperature: row.temperature ?? undefined,
             grindSetting: row.grind_setting ?? undefined,
+            rating: row.rating ?? undefined,
             score: {
                 body: row.rating_body,
                 acidity: row.rating_acidity,
