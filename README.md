@@ -32,14 +32,15 @@ Ein kurzes Video demonstriert die App im praktischen Einsatz — vom Brew Loggin
 
 | Komponente | Technologie |
 |---|---|
-| Framework | Expo SDK 54, React Native 0.81, TypeScript |
-| Navigation | Expo Router v6 |
-| Design System | Shopify Restyle |
+| Framework | Expo SDK 54, React Native 0.81, TypeScript (strict) |
+| Navigation | Expo Router v6 mit Custom Tab Bar + zentralem FAB |
+| Design System | Shopify Restyle (Crema-Theme: warm-braun, Amber-Akzente) |
 | Datenbank | `expo-sqlite` (nativ) / `localStorage` (Web) |
-| KI-Integration | Google Generative AI (Gemini 3 Flash Preview) |
+| Authentifizierung | Lokale User-Verwaltung mit AuthContext |
+| KI-Integration | Google Gemini (`gemini-flash-latest`) via direkter REST-API mit Structured Outputs |
 | Typografie | Inter, JetBrains Mono via `expo-font` |
 | Grafiken | `react-native-svg` |
-| Animationen | `react-native-reanimated`, `Animated` API |
+| Animationen | `react-native-reanimated`, `Animated` API (entkoppelte Backdrop/Sheet-Animation) |
 | Haptik | `expo-haptics` |
 | Gestensteuerung | `react-native-gesture-handler` |
 
@@ -50,32 +51,35 @@ Ein kurzes Video demonstriert die App im praktischen Einsatz — vom Brew Loggin
 ```
 Coffee-app/
 ├── app/                          # Navigation Layer (Expo Router)
-│   ├── _layout.tsx               # Root-Layout: DB-Init, Font-Loading, Web-Container
+│   ├── _layout.tsx               # Root-Layout: DB-Init, Font-Loading, AuthProvider
+│   ├── auth.tsx                  # Login / Registrierung
+│   ├── settings.tsx              # Benutzer-Einstellungen
 │   └── (tabs)/
-│       ├── _layout.tsx           # Tab-Navigator (6 Tabs)
-│       ├── index.tsx             # Home / Dashboard
-│       ├── log.tsx               # Brew Logger
-│       ├── history.tsx           # Brühverlauf
-│       ├── coffees.tsx           # Kaffee-Verwaltung
-│       ├── grinders.tsx          # Mühlen-Verwaltung
+│       ├── _layout.tsx           # Tab-Navigator mit CremaTabBar
+│       ├── index.tsx             # Overview / Dashboard
+│       ├── history.tsx           # Brühverlauf (Brews)
+│       ├── coffees.tsx           # Shelf (Bohnen + Mühlen kombiniert)
+│       ├── log.tsx               # Brew Logger (zentraler FAB)
 │       └── doctor.tsx            # KI-Berater (Brew Doctor)
 │
 └── src/
     ├── presentation/             # UI-Schicht
-    │   ├── theme/index.ts        # Shopify Restyle Theme
-    │   ├── components/           # Wiederverwendbare UI-Komponenten
-    │   └── screens/              # Vollbild-Komponenten (Manage-Screens)
+    │   ├── theme/index.ts        # Shopify Restyle Theme (Crema)
+    │   ├── components/           # BottomSheet, CremaTabBar, StarRating,
+    │   │                         # ScreenHeader, Segmented, Chip, Card, …
+    │   └── screens/              # ShelfScreen, ManageCoffeesScreen, ManageGrindersScreen
     │
     ├── domain/                   # Domänen- / Geschäftslogik-Schicht
-    │   ├── entities/             # Datenmodelle (TypeScript-Interfaces)
-    │   ├── services/             # DatabaseService, AIService, SyntheticDataFactory
+    │   ├── entities/             # User, Coffee, Grinder, BrewLog
+    │   ├── services/             # DatabaseService, AuthService, AIService,
+    │   │                         # SyntheticDataFactory
+    │   ├── context/              # AuthContext (React-Context)
     │   └── builders/             # BrewBuilder (Builder-Pattern)
     │
     ├── data/                     # Datenzugriffs-Schicht
     │   └── repositories/         # CoffeeRepository, GrinderRepository, BrewRepository
     │
-    └── utils/
-        └── mockData.ts           # Generierung von Testdaten
+    └── utils/                    # brewMetrics, freshness, mockData
 ```
 
 ---
@@ -120,7 +124,7 @@ npm install
 
 ### 5.3 API-Key konfigurieren
 
-Die KI-Beratung (Brew Doctor) benötigt einen Google Gemini API-Key. Der Key wird über eine `.env`-Datei konfiguriert.
+Die KI-Beratung (Brew Doctor) nutzt das Modell `gemini-flash-latest` über die Gemini-REST-API mit Structured Outputs (JSON-Schema) und benötigt einen Google Gemini API-Key. Der Key wird über eine `.env`-Datei konfiguriert.
 
 > **Hinweis für die Abgabe:** Die `.env`-Datei mit dem funktionsfähigen API-Key ist in der abgegebenen ZIP-Datei enthalten. Es ist keine weitere Konfiguration nötig — die App ist nach `npm install` sofort startbereit.
 

@@ -174,7 +174,7 @@ export default function DashboardScreen() {
                 {/* Stats */}
                 <Box flexDirection="row" gap="s" marginTop="m">
                     <StatCard icon={<MaterialCommunityIcons name="fire" size={20} color={theme.colors.primary} />} value={brews.length} label="Total brews" />
-                    <StatCard icon={<MaterialCommunityIcons name="leaf" size={20} color={theme.colors.accent} />} value={coffees.length} label="Beans" />
+                    <StatCard icon={<MaterialCommunityIcons name="coffee" size={20} color={theme.colors.accent} />} value={coffees.length} label="Beans" />
                     <StatCard icon={<MaterialCommunityIcons name="star" size={20} color={theme.colors.gold} />} value={avgRating ? avgRating.toFixed(1) : '–'} label="Avg rating" />
                 </Box>
 
