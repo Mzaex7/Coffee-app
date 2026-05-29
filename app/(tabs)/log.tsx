@@ -1,12 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ScrollView, TextInput, TouchableOpacity } from 'react-native';
-import { Box, Text, useTheme } from '../../src/presentation/theme';
-import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ScrollView, TouchableOpacity, Platform, Animated, Easing } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Button } from '../../src/presentation/components/Button';
+import { Card } from '../../src/presentation/components/Card';
+import { Chip } from '../../src/presentation/components/Chip';
+import { TextField, SelectField } from '../../src/presentation/components/Field';
+import { SectionHeader } from '../../src/presentation/components/SectionHeader';
+import { StarRating } from '../../src/presentation/components/StarRating';
 import { BodySelector } from '../../src/presentation/components/BodySelector';
 import { ScaleSlider } from '../../src/presentation/components/ScaleSlider';
 import { TasteWheel } from '../../src/presentation/components/TasteWheel';
 import { SelectionModal } from '../../src/presentation/components/SelectionModal';
+import { GrindSelector } from '../../src/presentation/components/GrindSelector';
 import { BrewBuilder } from '../../src/domain/builders/BrewBuilder';
 import { BrewRepository } from '../../src/data/repositories/BrewRepository';
 import { CoffeeRepository } from '../../src/data/repositories/CoffeeRepository';
@@ -14,56 +22,101 @@ import { GrinderRepository } from '../../src/data/repositories/GrinderRepository
 import { Coffee } from '../../src/domain/entities/Coffee';
 import { Grinder } from '../../src/domain/entities/Grinder';
 import { Ionicons } from '@expo/vector-icons';
-import { GrindSelector } from '../../src/presentation/components/GrindSelector';
 import { useAuth } from '../../src/domain/context/AuthContext';
+import { formatRatio, formatFlowRate, brewStyle } from '../../src/utils/brewMetrics';
+import { getFreshness } from '../../src/utils/freshness';
+
+const DEFAULTS = { doseIn: '18', doseOut: '36', time: '30', temp: '93', grindSetting: '' };
 
 export default function BrewLogScreen() {
     const router = useRouter();
     const theme = useTheme();
+    const insets = useSafeAreaInsets();
     const { user } = useAuth();
     const [coffees, setCoffees] = useState<Coffee[]>([]);
     const [grinders, setGrinders] = useState<Grinder[]>([]);
     const [showCoffeeModal, setShowCoffeeModal] = useState(false);
     const [showGrinderModal, setShowGrinderModal] = useState(false);
 
-    // State for BrewBuilder
     const [selectedCoffeeId, setSelectedCoffeeId] = useState<number | undefined>();
     const [selectedGrinderId, setSelectedGrinderId] = useState<number | undefined>();
-    const [doseIn, setDoseIn] = useState('18');
-    const [doseOut, setDoseOut] = useState('36');
-    const [time, setTime] = useState('30');
-    const [temp, setTemp] = useState('93');
-    const [grindSetting, setGrindSetting] = useState('');
+    const [doseIn, setDoseIn] = useState(DEFAULTS.doseIn);
+    const [doseOut, setDoseOut] = useState(DEFAULTS.doseOut);
+    const [time, setTime] = useState(DEFAULTS.time);
+    const [temp, setTemp] = useState(DEFAULTS.temp);
+    const [grindSetting, setGrindSetting] = useState(DEFAULTS.grindSetting);
 
-    // Scoring
+    const [rating, setRating] = useState(0);
     const [body, setBody] = useState(1);
     const [acidity, setAcidity] = useState(5);
     const [bitterness, setBitterness] = useState(5);
     const [tasteNotes, setTasteNotes] = useState<string[]>([]);
 
-    // Timer State
     const [timerSeconds, setTimerSeconds] = useState(0);
     const [isTimerRunning, setIsTimerRunning] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    // Wall-clock timer — survives JS frame drops without drift.
+    const startedAtRef = useRef<number | null>(null);
+    const accumulatedRef = useRef(0); // ms accumulated across pause/resume
+    const rafRef = useRef<number | null>(null);
+    const lastTickSecondRef = useRef<number>(0);
+    const pulseAnim = useRef(new Animated.Value(1)).current;
 
     useEffect(() => {
-        let interval: NodeJS.Timeout;
-        if (isTimerRunning) {
-            interval = setInterval(() => {
-                setTimerSeconds(s => s + 0.1);
-            }, 100);
+        if (!isTimerRunning) {
+            if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+            return;
         }
-        return () => clearInterval(interval);
-    }, [isTimerRunning]);
+        startedAtRef.current = Date.now() - accumulatedRef.current;
 
-    const handleStartTimer = () => setIsTimerRunning(true);
+        const tick = () => {
+            const start = startedAtRef.current ?? Date.now();
+            const elapsedMs = Date.now() - start;
+            const s = elapsedMs / 1000;
+            setTimerSeconds(s);
+
+            // Per-second tactile + visual beat.
+            const whole = Math.floor(s);
+            if (whole > lastTickSecondRef.current && whole > 0) {
+                lastTickSecondRef.current = whole;
+                if (Platform.OS !== 'web') Haptics.selectionAsync();
+                pulseAnim.stopAnimation();
+                pulseAnim.setValue(1);
+                Animated.sequence([
+                    Animated.timing(pulseAnim, { toValue: 1.06, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+                    Animated.timing(pulseAnim, { toValue: 1, duration: 220, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                ]).start();
+            }
+            rafRef.current = requestAnimationFrame(tick);
+        };
+        rafRef.current = requestAnimationFrame(tick);
+        return () => {
+            if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+        };
+    }, [isTimerRunning, pulseAnim]);
+
+    const handleStartTimer = () => {
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        lastTickSecondRef.current = Math.floor(accumulatedRef.current / 1000);
+        setIsTimerRunning(true);
+    };
     const handleStopTimer = () => {
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        // Capture the elapsed time so a resume continues from the same point.
+        const start = startedAtRef.current ?? Date.now();
+        accumulatedRef.current = Date.now() - start;
         setIsTimerRunning(false);
         setTime(timerSeconds.toFixed(1));
     };
     const handleResetTimer = () => {
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setIsTimerRunning(false);
+        accumulatedRef.current = 0;
+        lastTickSecondRef.current = 0;
         setTimerSeconds(0);
-        setTime('0');
     };
 
     useFocusEffect(
@@ -77,81 +130,104 @@ export default function BrewLogScreen() {
         }, [user?.id])
     );
 
-
+    const resetForm = () => {
+        setSelectedCoffeeId(undefined);
+        setSelectedGrinderId(undefined);
+        setDoseIn(DEFAULTS.doseIn);
+        setDoseOut(DEFAULTS.doseOut);
+        setTime(DEFAULTS.time);
+        setTemp(DEFAULTS.temp);
+        setGrindSetting(DEFAULTS.grindSetting);
+        setRating(0);
+        setBody(1);
+        setAcidity(5);
+        setBitterness(5);
+        setTasteNotes([]);
+        setTimerSeconds(0);
+    };
 
     const handleSave = async () => {
         if (!selectedCoffeeId || !selectedGrinderId) {
-            alert('Please select Coffee and Grinder');
+            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            alert('Please select a coffee and grinder first.');
             return;
         }
-
+        setSaving(true);
         try {
-            const builder = new BrewBuilder();
-            const brew = builder
+            const brew = new BrewBuilder()
                 .setEquipment(selectedCoffeeId, selectedGrinderId)
                 .setRecipe(parseFloat(doseIn), parseFloat(doseOut), parseFloat(time), parseFloat(temp))
                 .setGrindSetting(grindSetting)
+                .setRating(rating)
                 .setScore({ body, acidity, bitterness, tasteNotes })
                 .build();
-
-            // Set userId before saving
             brew.userId = user?.id;
-
             await new BrewRepository().create(brew);
-            alert('Brew Logged!');
+            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            resetForm();
             router.back();
         } catch (e) {
+            if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             alert('Error saving brew: ' + e);
+        } finally {
+            setSaving(false);
         }
     };
 
+    const selectedCoffee = coffees.find(c => c.id === selectedCoffeeId);
+    const selectedGrinder = grinders.find(g => g.id === selectedGrinderId);
+    const fresh = getFreshness(selectedCoffee?.roastDate);
+
+    const nIn = parseFloat(doseIn);
+    const nOut = parseFloat(doseOut);
+    const nTime = parseFloat(time);
+    const ratioLabel = formatRatio(nIn, nOut);
+    const flowLabel = formatFlowRate(nOut, nTime);
+    const style = nIn > 0 && nOut > 0 ? brewStyle(nIn, nOut) : '–';
+
     return (
         <Box flex={1} backgroundColor="mainBackground">
-            <Stack.Screen options={{ title: 'Log Brew', headerBackTitle: 'Back' }} />
-            <ScrollView contentContainerStyle={{ padding: theme.spacing.m, paddingBottom: 100 }}>
+            <Box
+                flexDirection="row"
+                alignItems="center"
+                gap="m"
+                paddingHorizontal="m"
+                style={{ paddingTop: (insets.top || 12) + 8, paddingBottom: 8 }}
+            >
+                <TouchableOpacity onPress={() => router.back()} hitSlop={8}>
+                    <Ionicons name="close" size={26} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+                <Box flex={1}>
+                    <Text color="textPrimary" style={{ fontFamily: 'Inter_700Bold', fontSize: 24, letterSpacing: -0.5 }}>New brew</Text>
+                </Box>
+                <TouchableOpacity onPress={resetForm} hitSlop={8}>
+                    <Text variant="label" color="primary" fontWeight="bold" textTransform="uppercase">Reset</Text>
+                </TouchableOpacity>
+            </Box>
+            <ScrollView contentContainerStyle={{ padding: theme.spacing.m, paddingBottom: 120, gap: theme.spacing.l }}>
 
-                {/* Equipment Selection */}
-                <Box marginBottom="l">
-                    <Text variant="subheader" marginBottom="m">Equipment</Text>
-
+                {/* Equipment */}
+                <Box>
+                    <SectionHeader title="Equipment" />
                     <Box gap="m">
-                        <TouchableOpacity onPress={() => setShowCoffeeModal(true)}>
-                            <Box
-                                backgroundColor="cardPrimaryBackground"
-                                padding="m"
-                                borderRadius={8}
-                                flexDirection="row"
-                                justifyContent="space-between"
-                                alignItems="center"
-                            >
-                                <Box>
-                                    <Text variant="caption" color="textSecondary">Coffee</Text>
-                                    <Text variant="body" fontWeight="bold">
-                                        {selectedCoffeeId ? coffees.find(c => c.id === selectedCoffeeId)?.name : "Select Coffee"}
-                                    </Text>
-                                </Box>
-                                <Ionicons name="chevron-down" size={20} color={theme.colors.textSecondary} />
+                        <SelectField
+                            label="Coffee"
+                            value={selectedCoffee?.name}
+                            placeholder="Select coffee"
+                            onPress={() => setShowCoffeeModal(true)}
+                        />
+                        {fresh && (
+                            <Box flexDirection="row" alignItems="center" gap="xs">
+                                <Chip label={fresh.label} tone={fresh.tone} small />
+                                <Text variant="caption" color="textSecondary">{fresh.days}d off roast · {fresh.detail}</Text>
                             </Box>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity onPress={() => setShowGrinderModal(true)}>
-                            <Box
-                                backgroundColor="cardPrimaryBackground"
-                                padding="m"
-                                borderRadius={8}
-                                flexDirection="row"
-                                justifyContent="space-between"
-                                alignItems="center"
-                            >
-                                <Box>
-                                    <Text variant="caption" color="textSecondary">Grinder</Text>
-                                    <Text variant="body" fontWeight="bold">
-                                        {selectedGrinderId ? grinders.find(g => g.id === selectedGrinderId)?.name : "Select Grinder"}
-                                    </Text>
-                                </Box>
-                                <Ionicons name="chevron-down" size={20} color={theme.colors.textSecondary} />
-                            </Box>
-                        </TouchableOpacity>
+                        )}
+                        <SelectField
+                            label="Grinder"
+                            value={selectedGrinder?.name}
+                            placeholder="Select grinder"
+                            onPress={() => setShowGrinderModal(true)}
+                        />
                     </Box>
 
                     <SelectionModal
@@ -162,7 +238,6 @@ export default function BrewLogScreen() {
                         onSelect={(item) => setSelectedCoffeeId(Number(item.id))}
                         selectedId={selectedCoffeeId}
                     />
-
                     <SelectionModal
                         visible={showGrinderModal}
                         onClose={() => setShowGrinderModal(false)}
@@ -173,100 +248,133 @@ export default function BrewLogScreen() {
                     />
                 </Box>
 
-
-
                 {/* Recipe */}
-                <Box marginBottom="l">
-                    <Text variant="subheader" marginBottom="m">Recipe</Text>
+                <Box>
+                    <SectionHeader title="Recipe" />
                     <Box flexDirection="row" gap="m" marginBottom="m">
-                        <InputField label="Dose In (g)" value={doseIn} onChange={setDoseIn} keyboardType="decimal-pad" />
-                        <InputField label="Dose Out (g)" value={doseOut} onChange={setDoseOut} keyboardType="decimal-pad" />
+                        <TextField label="Dose in" value={doseIn} onChangeText={setDoseIn} keyboardType="decimal-pad" suffix="g" />
+                        <TextField label="Yield" value={doseOut} onChangeText={setDoseOut} keyboardType="decimal-pad" suffix="g" />
                     </Box>
                     <Box flexDirection="row" gap="m" marginBottom="m">
-                        <InputField label="Time (s)" value={time} onChange={setTime} keyboardType="decimal-pad" />
-                        <InputField label="Temp (°C)" value={temp} onChange={setTemp} keyboardType="decimal-pad" />
+                        <TextField label="Time" value={time} onChangeText={setTime} keyboardType="decimal-pad" suffix="s" />
+                        <TextField label="Temp" value={temp} onChangeText={setTemp} keyboardType="decimal-pad" suffix="°C" />
                     </Box>
+
+                    {/* Live metrics */}
+                    <Card elevated padding="m">
+                        <Box flexDirection="row" justifyContent="space-between">
+                            <LiveMetric label="Ratio" value={ratioLabel} />
+                            <Box width={1} backgroundColor="border" />
+                            <LiveMetric label="Flow" value={flowLabel} />
+                            <Box width={1} backgroundColor="border" />
+                            <LiveMetric label="Style" value={style} />
+                        </Box>
+                    </Card>
+
+                    <Box height={theme.spacing.m} />
                     <GrindSelector value={grindSetting} onChange={setGrindSetting} />
                 </Box>
 
-                {/* Built-in Timer */}
-                <Box marginBottom="l" backgroundColor="cardPrimaryBackground" padding="m" borderRadius={16} alignItems="center">
-                    <Text variant="caption" color="textSecondary" marginBottom="s" textTransform="uppercase" letterSpacing={1}>Shot Timer</Text>
-                    <Text variant="header" fontSize={48} fontWeight="900" style={{ fontVariant: ['tabular-nums'] }} marginBottom="m">
-                        {timerSeconds.toFixed(1)}s
-                    </Text>
-                    <Box flexDirection="row" gap="m">
-                        {!isTimerRunning ? (
-                            <TouchableOpacity onPress={handleStartTimer}>
-                                <Box backgroundColor="primary" paddingHorizontal="xl" paddingVertical="m" borderRadius={30}>
-                                    <Text variant="body" fontWeight="bold" color="white">Start</Text>
+                {/* Timer */}
+                <Card elevated padding="l">
+                    <Box alignItems="center">
+                        <Box flexDirection="row" alignItems="center" gap="s" marginBottom="s">
+                            <Box
+                                width={6}
+                                height={6}
+                                borderRadius={3}
+                                backgroundColor={isTimerRunning ? 'primary' : 'borderWeak'}
+                            />
+                            <Text variant="label" textTransform="uppercase" style={{ fontFamily: 'JetBrainsMono_400Regular', letterSpacing: 2 }} color="textTertiary">
+                                {isTimerRunning ? 'Pulling' : 'Shot Timer'}
+                            </Text>
+                        </Box>
+                        <Animated.View style={{ transform: [{ scale: pulseAnim }], marginBottom: 14 }}>
+                            <TimerDisplay seconds={timerSeconds} />
+                        </Animated.View>
+                        <Box flexDirection="row" gap="m">
+                            {!isTimerRunning ? (
+                                <TouchableOpacity onPress={handleStartTimer} activeOpacity={0.85}>
+                                    <Box backgroundColor="primary" paddingHorizontal="xl" paddingVertical="m" borderRadius={radii.full}>
+                                        <Text variant="body" fontWeight="bold" color="onPrimary">
+                                            {timerSeconds > 0 ? 'Resume' : 'Start'}
+                                        </Text>
+                                    </Box>
+                                </TouchableOpacity>
+                            ) : (
+                                <TouchableOpacity onPress={handleStopTimer} activeOpacity={0.85}>
+                                    <Box backgroundColor="errorMuted" paddingHorizontal="xl" paddingVertical="m" borderRadius={radii.full}>
+                                        <Text variant="body" fontWeight="bold" color="error">Stop</Text>
+                                    </Box>
+                                </TouchableOpacity>
+                            )}
+                            <TouchableOpacity onPress={handleResetTimer} activeOpacity={0.85}>
+                                <Box backgroundColor="surface" paddingHorizontal="l" paddingVertical="m" borderRadius={radii.full}>
+                                    <Text variant="body" fontWeight="bold" color="textSecondary">Reset</Text>
                                 </Box>
                             </TouchableOpacity>
-                        ) : (
-                            <TouchableOpacity onPress={handleStopTimer}>
-                                <Box backgroundColor="error" paddingHorizontal="xl" paddingVertical="m" borderRadius={30}>
-                                    <Text variant="body" fontWeight="bold" color="white">Stop</Text>
-                                </Box>
-                            </TouchableOpacity>
-                        )}
-                        <TouchableOpacity onPress={handleResetTimer}>
-                            <Box backgroundColor="surface" paddingHorizontal="l" paddingVertical="m" borderRadius={30}>
-                                <Text variant="body" fontWeight="bold" color="textSecondary">Reset</Text>
-                            </Box>
-                        </TouchableOpacity>
+                        </Box>
                     </Box>
+                </Card>
+
+                {/* Rating */}
+                <Box>
+                    <SectionHeader title="Overall Shot" />
+                    <Card padding="l">
+                        <StarRating value={rating} onChange={setRating} size={38} showNumeric />
+                    </Card>
                 </Box>
 
-                {/* Taste Profile */}
-                <Box marginBottom="l">
-                    <Text variant="subheader" marginBottom="m">Taste Profile</Text>
-
+                {/* Taste */}
+                <Box>
+                    <SectionHeader title="Taste Profile" />
                     <Text variant="body" marginBottom="s">Body</Text>
                     <BodySelector value={body} onChange={setBody} />
-
                     <Box height={20} />
-
-                    <ScaleSlider
-                        label="ACIDITY"
-                        value={acidity}
-                        onChange={setAcidity}
-                        gradientColors={['#90EE90', '#FFFF00', '#FFA500']}
-                    />
-
-                    <ScaleSlider
-                        label="BITTERNESS"
-                        value={bitterness}
-                        onChange={setBitterness}
-                        gradientColors={['#D4A574', '#8B4513', '#2F1A0E']}
-                    />
-
+                    <ScaleSlider label="ACIDITY" value={acidity} onChange={setAcidity} gradientColors={['#90EE90', '#FFFF00', '#FFA500']} />
+                    <ScaleSlider label="BITTERNESS" value={bitterness} onChange={setBitterness} gradientColors={['#D4A574', '#8B4513', '#2F1A0E']} />
                     <TasteWheel selectedNotes={tasteNotes} onNotesChange={setTasteNotes} />
                 </Box>
 
-                <Button label="Save Brew Log" onPress={handleSave} />
+                <Button label="Save Brew Log" onPress={handleSave} loading={saving} disabled={saving} />
             </ScrollView>
         </Box>
     );
 }
 
-const InputField = ({ label, value, onChange, placeholder, keyboardType = 'numeric' }: any) => {
+const LiveMetric = ({ label, value }: { label: string; value: string }) => (
+    <Box flex={1} alignItems="center">
+        <Text color="primary" style={{ fontFamily: 'JetBrainsMono_400Regular', fontSize: 19, fontWeight: '700' }} numberOfLines={1}>{value}</Text>
+        <Text variant="label" textTransform="uppercase" marginTop="xs" style={{ fontFamily: 'JetBrainsMono_400Regular', letterSpacing: 1 }} color="textTertiary">{label}</Text>
+    </Box>
+);
+
+/**
+ * Big tabular timer readout. Split into whole-seconds and tenths so the digits
+ * don't jitter on every rAF tick, and color-banded around the espresso target window
+ * (25–32s = primary amber, >32s warns).
+ */
+const TimerDisplay = ({ seconds }: { seconds: number }) => {
     const theme = useTheme();
+    const whole = Math.floor(seconds);
+    const tenth = Math.floor((seconds - whole) * 10);
+    const color =
+        seconds === 0 ? theme.colors.textTertiary
+        : seconds < 18 ? theme.colors.textPrimary
+        : seconds <= 32 ? theme.colors.primary
+        : theme.colors.error;
+
     return (
-        <Box flex={1}>
-            <Text variant="caption" marginBottom="s">{label}</Text>
-            <TextInput
-                style={{
-                    backgroundColor: theme.colors.cardPrimaryBackground,
-                    color: theme.colors.textPrimary,
-                    padding: theme.spacing.m,
-                    borderRadius: 8,
-                }}
-                value={value}
-                onChangeText={onChange}
-                keyboardType={keyboardType}
-                placeholder={placeholder}
-                placeholderTextColor={theme.colors.textSecondary}
-            />
+        <Box flexDirection="row" alignItems="baseline">
+            <Text style={{ fontFamily: 'JetBrainsMono_400Regular', fontSize: 64, fontWeight: '700', letterSpacing: -1.5, color, fontVariant: ['tabular-nums'] }}>
+                {whole.toString().padStart(2, '0')}
+            </Text>
+            <Text style={{ fontFamily: 'JetBrainsMono_400Regular', fontSize: 30, fontWeight: '600', color, fontVariant: ['tabular-nums'], marginLeft: 2 }}>
+                .{tenth}
+            </Text>
+            <Text style={{ fontFamily: 'JetBrainsMono_400Regular', fontSize: 18, fontWeight: '600', color: theme.colors.textTertiary, marginLeft: 6 }}>
+                s
+            </Text>
         </Box>
     );
 };

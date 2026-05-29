@@ -1,19 +1,25 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { Modal, FlatList, TouchableOpacity, ScrollView, TextInput, View, Alert, Platform, Animated, Easing } from 'react-native';
-import { Box, Text, useTheme } from '../../src/presentation/theme';
+import { FlatList, TouchableOpacity, ScrollView, View, Animated, Easing } from 'react-native';
+import { BottomSheet } from '../../src/presentation/components/BottomSheet';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
 import { Button } from '../../src/presentation/components/Button';
-import { Stack, useFocusEffect } from 'expo-router';
-import { databaseService } from '../../src/domain/services/DatabaseService';
-import { aiService, AdviceContext } from '../../src/domain/services/AIService';
+import { Card } from '../../src/presentation/components/Card';
+import { Chip } from '../../src/presentation/components/Chip';
+import { TextField } from '../../src/presentation/components/Field';
+import { SectionHeader } from '../../src/presentation/components/SectionHeader';
+import { EmptyState } from '../../src/presentation/components/EmptyState';
+import { ScreenHeader } from '../../src/presentation/components/ScreenHeader';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { aiService, AdviceContext, StructuredAdvice } from '../../src/domain/services/AIService';
 import { BrewRepository } from '../../src/data/repositories/BrewRepository';
 import { BrewLog } from '../../src/domain/entities/BrewLog';
 import { CoffeeRepository } from '../../src/data/repositories/CoffeeRepository';
 import { Coffee } from '../../src/domain/entities/Coffee';
 import { GrinderRepository } from '../../src/data/repositories/GrinderRepository';
 import { Grinder } from '../../src/domain/entities/Grinder';
-import { generateMockData } from '../../src/utils/mockData';
-import Markdown from 'react-native-markdown-display';
 import { useAuth } from '../../src/domain/context/AuthContext';
+import { formatRatio, brewStyle } from '../../src/utils/brewMetrics';
 
 const LOADING_MESSAGES = [
     'Pulling a shot...',
@@ -24,6 +30,8 @@ const LOADING_MESSAGES = [
     'Analyzing your brew...',
     'Brewing up some advice...',
 ];
+
+const BODY_LABELS = ['Watery', 'Light', 'Medium', 'Heavy', 'Syrupy'];
 
 function CoffeeLoadingAnimation() {
     const theme = useTheme();
@@ -55,58 +63,26 @@ function CoffeeLoadingAnimation() {
     return (
         <View style={{ alignItems: 'center', paddingVertical: 20 }}>
             <View style={{ position: 'relative', width: 56, height: 48, marginBottom: 12 }}>
-                {/* Cup body */}
                 <View style={{
-                    position: 'absolute',
-                    bottom: 6,
-                    left: 2,
-                    width: 40,
-                    height: cupHeight,
+                    position: 'absolute', bottom: 6, left: 2, width: 40, height: cupHeight,
                     backgroundColor: theme.colors.surface,
-                    borderBottomLeftRadius: 10,
-                    borderBottomRightRadius: 10,
-                    borderTopLeftRadius: 2,
-                    borderTopRightRadius: 2,
-                    overflow: 'hidden',
+                    borderBottomLeftRadius: 10, borderBottomRightRadius: 10,
+                    borderTopLeftRadius: 2, borderTopRightRadius: 2, overflow: 'hidden',
                 }}>
-                    {/* Coffee liquid — fills from bottom */}
                     <Animated.View style={{
-                        position: 'absolute',
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        height: liquidHeight,
-                        backgroundColor: theme.colors.primary,
-                        borderBottomLeftRadius: 8,
-                        borderBottomRightRadius: 8,
+                        position: 'absolute', bottom: 0, left: 0, right: 0, height: liquidHeight,
+                        backgroundColor: theme.colors.primary, borderBottomLeftRadius: 8, borderBottomRightRadius: 8,
                     }} />
                 </View>
-
-                {/* Handle */}
                 <View style={{
-                    position: 'absolute',
-                    right: 0,
-                    bottom: 14,
-                    width: 14,
-                    height: 18,
-                    borderRadius: 9,
-                    borderWidth: 3,
-                    borderColor: theme.colors.surface,
-                    borderLeftWidth: 0,
+                    position: 'absolute', right: 0, bottom: 14, width: 14, height: 18, borderRadius: 9,
+                    borderWidth: 3, borderColor: theme.colors.surface, borderLeftWidth: 0,
                 }} />
-
-                {/* Saucer */}
                 <View style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: -2,
-                    width: 48,
-                    height: 6,
-                    backgroundColor: theme.colors.surface,
-                    borderRadius: 3,
+                    position: 'absolute', bottom: 0, left: -2, width: 48, height: 6,
+                    backgroundColor: theme.colors.surface, borderRadius: 3,
                 }} />
             </View>
-
             <Text variant="body" color="textSecondary" marginTop="s" textAlign="center">
                 {LOADING_MESSAGES[messageIndex]}
             </Text>
@@ -126,7 +102,6 @@ function findRelevantCrossUserBrews(
     allGrinders: Grinder[],
     userId: number,
 ): BrewLog[] {
-    // Build sets of user's equipment identifiers
     const userCoffeeKeys = new Set(
         userCoffees.map(c => `${c.name?.toLowerCase()}|${c.roastery?.toLowerCase()}`)
     );
@@ -134,36 +109,31 @@ function findRelevantCrossUserBrews(
         userGrinders.map(g => `${g.name?.toLowerCase()}|${g.brand?.toLowerCase()}|${g.model?.toLowerCase()}`)
     );
 
-    // Build lookup maps for all coffees and grinders
     const coffeeById: Record<number, Coffee> = {};
     allCoffees.forEach(c => { if (c.id) coffeeById[c.id] = c; });
     const grinderById: Record<number, Grinder> = {};
     allGrinders.forEach(g => { if (g.id) grinderById[g.id] = g; });
 
-    // Filter other users' brews by equipment match
     return allBrews.filter(brew => {
-        if (brew.userId === userId) return false; // Skip own brews
-
+        if (brew.userId === userId) return false;
         const brewCoffee = coffeeById[brew.coffeeId];
         const brewGrinder = grinderById[brew.grinderId];
-
         const coffeeMatch = brewCoffee
             ? userCoffeeKeys.has(`${brewCoffee.name?.toLowerCase()}|${brewCoffee.roastery?.toLowerCase()}`)
             : false;
-
         const grinderMatch = brewGrinder
             ? userGrinderKeys.has(`${brewGrinder.name?.toLowerCase()}|${brewGrinder.brand?.toLowerCase()}|${brewGrinder.model?.toLowerCase()}`)
             : false;
-
         return coffeeMatch || grinderMatch;
     });
 }
 
-
 export default function AdvisorScreen() {
     const theme = useTheme();
+    const router = useRouter();
     const { user } = useAuth();
-    const [advice, setAdvice] = useState<string>('');
+    const [advice, setAdvice] = useState<StructuredAdvice | null>(null);
+    const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [selectedBrew, setSelectedBrew] = useState<BrewLog | null>(null);
     const [allBrews, setAllBrews] = useState<BrewLog[]>([]);
@@ -181,166 +151,117 @@ export default function AdvisorScreen() {
     const loadData = async () => {
         if (!user?.id) return;
         const brewRepo = new BrewRepository();
-        // Load only user's brews for the UI selection
         const brews = await brewRepo.getAll(user.id);
         brews.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setAllBrews(brews);
 
         if (brews.length > 0) {
-            setSelectedBrew(brews[0]);
+            setSelectedBrew(prev => prev ?? brews[0]);
+        } else {
+            setSelectedBrew(null);
         }
 
-        const coffeeRepo = new CoffeeRepository();
-        const allCoffees = await coffeeRepo.getAll(user.id);
+        const allCoffees = await new CoffeeRepository().getAll(user.id);
         const coffeeMap: Record<number, Coffee> = {};
         allCoffees.forEach(c => coffeeMap[c.id!] = c);
         setCoffees(coffeeMap);
 
-        const grinderRepo = new GrinderRepository();
-        const allGrinders = await grinderRepo.getAll(user.id);
+        const allGrinders = await new GrinderRepository().getAll(user.id);
         const grinderMap: Record<number, Grinder> = {};
         allGrinders.forEach(g => grinderMap[g.id!] = g);
         setGrinders(grinderMap);
     };
 
-    const bodyLabel = (body: number) => body === 0 ? 'Light' : body === 1 ? 'Medium' : 'Heavy';
-
     const getAdvice = async () => {
         if (!selectedBrew || !user?.id) return;
         setLoading(true);
-        setAdvice('');
+        setAdvice(null);
+        setError('');
 
-        const brewRepo = new BrewRepository();
-        const coffeeRepo = new CoffeeRepository();
-        const grinderRepo = new GrinderRepository();
-
-        // Load user's own brews as history
-        const userBrews = await brewRepo.getAll(user.id);
-
-        // Load ALL data globally for cross-user analysis
-        const globalBrews = await brewRepo.getAllGlobal();
-        const globalCoffees = await coffeeRepo.getAllGlobal();
-        const globalGrinders = await grinderRepo.getAllGlobal();
-
-        // User's own equipment
-        const userCoffees = await coffeeRepo.getAll(user.id);
-        const userGrinders = await grinderRepo.getAll(user.id);
-
-        // Find relevant cross-user brews
-        const crossUserBrews = findRelevantCrossUserBrews(
-            userCoffees,
-            userGrinders,
-            globalBrews,
-            globalCoffees,
-            globalGrinders,
-            user.id,
-        );
-
-        // Build full coffee/grinder maps for context (includes cross-user equipment)
-        const allCoffeeMap: Record<number, Coffee> = {};
-        globalCoffees.forEach(c => allCoffeeMap[c.id!] = c);
-        const allGrinderMap: Record<number, Grinder> = {};
-        globalGrinders.forEach(g => allGrinderMap[g.id!] = g);
-
-        const context: AdviceContext = {
-            coffee: selectedBrew.coffeeId ? allCoffeeMap[selectedBrew.coffeeId] : undefined,
-            grinder: selectedBrew.grinderId ? allGrinderMap[selectedBrew.grinderId] : undefined,
-            allCoffees: allCoffeeMap,
-            allGrinders: allGrinderMap,
-        };
-
-        // Combine user's history with relevant cross-user brews
-        const combinedHistory = [...userBrews, ...crossUserBrews];
-
-        const result = await aiService.getAdvice(
-            selectedBrew,
-            combinedHistory,
-            goal,
-            context
-        );
-        setAdvice(result);
-        setLoading(false);
-    };
-
-    const handleGenerateData = async () => {
-        if (!user?.id) return;
-        setLoading(true);
         try {
-            await generateMockData(50, user.id);
-            alert('Generated 50 mock brews!');
-            loadData();
+            const brewRepo = new BrewRepository();
+            const coffeeRepo = new CoffeeRepository();
+            const grinderRepo = new GrinderRepository();
+
+            const userBrews = await brewRepo.getAll(user.id);
+            const globalBrews = await brewRepo.getAllGlobal();
+            const globalCoffees = await coffeeRepo.getAllGlobal();
+            const globalGrinders = await grinderRepo.getAllGlobal();
+            const userCoffees = await coffeeRepo.getAll(user.id);
+            const userGrinders = await grinderRepo.getAll(user.id);
+
+            const crossUserBrews = findRelevantCrossUserBrews(
+                userCoffees, userGrinders, globalBrews, globalCoffees, globalGrinders, user.id,
+            );
+
+            const allCoffeeMap: Record<number, Coffee> = {};
+            globalCoffees.forEach(c => allCoffeeMap[c.id!] = c);
+            const allGrinderMap: Record<number, Grinder> = {};
+            globalGrinders.forEach(g => allGrinderMap[g.id!] = g);
+
+            const context: AdviceContext = {
+                coffee: selectedBrew.coffeeId ? allCoffeeMap[selectedBrew.coffeeId] : undefined,
+                grinder: selectedBrew.grinderId ? allGrinderMap[selectedBrew.grinderId] : undefined,
+                allCoffees: allCoffeeMap,
+                allGrinders: allGrinderMap,
+            };
+
+            const combinedHistory = [...userBrews, ...crossUserBrews];
+            const result = await aiService.getStructuredAdvice(selectedBrew, combinedHistory, goal, context);
+            setAdvice(result);
         } catch (e) {
-            alert('Error generating data: ' + e);
+            setError(e instanceof Error ? e.message : 'Unknown error');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <Box flex={1} backgroundColor="mainBackground" padding="m">
-            <Stack.Screen options={{ title: 'AI Advisor', headerBackTitle: 'Back' }} />
-            <ScrollView contentContainerStyle={{ paddingBottom: 50 }}>
-                <Text variant="header" marginBottom="m">Brew Doctor</Text>
+        <Box flex={1} backgroundColor="mainBackground">
+            <ScreenHeader
+                eyebrow="AI"
+                title="Brew Doctor"
+                right={
+                    <Box
+                        width={42}
+                        height={42}
+                        borderRadius={radii.m}
+                        backgroundColor="cardElevated"
+                        borderWidth={1}
+                        borderColor="border"
+                        alignItems="center"
+                        justifyContent="center"
+                    >
+                        <MaterialCommunityIcons name="robot-happy-outline" size={22} color={theme.colors.accent} />
+                    </Box>
+                }
+            >
+                <Text variant="body" color="textSecondary" marginTop="s">
+                    Pick a shot and your goal — get tailored dial-in advice.
+                </Text>
+            </ScreenHeader>
 
-                <Box marginBottom="l">
-                    <Text variant="subheader" fontSize={18} marginBottom="s">Dev Tools</Text>
-                    <Button
-                        label="Generate 50 Mock Brews"
-                        onPress={handleGenerateData}
-                        variant="outline"
-                    />
-                    <Box height={10} />
-                    <Button
-                        label="Nuke Data (Clear All)"
-                        onPress={() => {
-                            const nukeAllData = async () => {
-                                await databaseService.nukeAllData();
-                                setSelectedBrew(null);
-                                setAllBrews([]);
-                                setAdvice('');
-                                loadData();
-                            };
-
-                            if (Platform.OS === 'web') {
-                                if (confirm('Are you sure? This will delete all data.')) {
-                                    nukeAllData();
-                                }
-                            } else {
-                                Alert.alert(
-                                    'Nuke Data',
-                                    'Are you sure? This will delete all data.',
-                                    [
-                                        { text: 'Cancel', style: 'cancel' },
-                                        { text: 'Delete All', style: 'destructive', onPress: nukeAllData },
-                                    ]
-                                );
-                            }
-                        }}
-                        variant="outline"
-                    />
-                </Box>
-
+            <ScrollView
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130 }}
+                showsVerticalScrollIndicator={false}
+            >
                 {!selectedBrew ? (
-                    <Box backgroundColor="cardPrimaryBackground" padding="l" borderRadius={12} alignItems="center">
-                        <Text variant="body" color="textSecondary" textAlign="center">No brews found. Log a brew to get advice!</Text>
+                    <Box marginTop="l">
+                        <EmptyState
+                            icon="robot-happy-outline"
+                            title="No shots to analyze yet"
+                            subtitle="Log a brew and the Doctor will suggest how to dial it in."
+                            action={{ label: 'Log a Brew', onPress: () => router.push('/(tabs)/log') }}
+                        />
                     </Box>
                 ) : (
-                    <Box marginBottom="l">
-                        <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="s">
-                            <Text variant="subheader" fontSize={18}>Selected Brew</Text>
-                            <TouchableOpacity onPress={() => setModalVisible(true)} style={{ backgroundColor: theme.colors.primary, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 6 }}>
-                                <Text color="textPrimary" variant="caption" fontWeight="bold">Change Brew</Text>
-                            </TouchableOpacity>
-                        </Box>
-
-                        <Box backgroundColor="cardPrimaryBackground" padding="m" borderRadius={12} marginBottom="m">
-                            {/* Header: Coffee + Date */}
-                            <Box flexDirection="row" justifyContent="space-between" alignItems="flex-start" marginBottom="s">
-                                <Box flex={1}>
-                                    <Text variant="body" color="primary" fontWeight="bold" fontSize={18}>
-                                        {coffees[selectedBrew.coffeeId!]?.name || 'Unknown Coffee'}
-                                    </Text>
-                                    <Text variant="caption" color="textSecondary">
+                    <>
+                        <SectionHeader title="Selected Brew" action={{ label: 'Change', onPress: () => setModalVisible(true) }} />
+                        <Card padding="m">
+                            <Box flexDirection="row" justifyContent="space-between" alignItems="flex-start">
+                                <Box flex={1} marginRight="s">
+                                    <Text variant="title">{coffees[selectedBrew.coffeeId!]?.name || 'Unknown Coffee'}</Text>
+                                    <Text variant="caption" color="textSecondary" marginTop="xs">
                                         {coffees[selectedBrew.coffeeId!]?.roastery || ''}
                                         {coffees[selectedBrew.coffeeId!]?.origin ? ` · ${coffees[selectedBrew.coffeeId!]?.origin}` : ''}
                                     </Text>
@@ -348,169 +269,280 @@ export default function AdvisorScreen() {
                                 <Text variant="caption" color="textSecondary">{new Date(selectedBrew.date).toLocaleDateString()}</Text>
                             </Box>
 
-                            {/* Equipment */}
-                            <Text variant="caption" color="textSecondary" marginBottom="s">
-                                🔧 {grinders[selectedBrew.grinderId!]?.brand} {grinders[selectedBrew.grinderId!]?.model || 'Unknown Grinder'}
-                                {selectedBrew.grindSetting ? ` · Grind: ${selectedBrew.grindSetting}` : ''}
+                            <Text variant="caption" color="textSecondary" marginTop="s">
+                                {grinders[selectedBrew.grinderId!]?.brand} {grinders[selectedBrew.grinderId!]?.model || 'Unknown Grinder'}
+                                {selectedBrew.grindSetting ? ` · Grind ${selectedBrew.grindSetting}` : ''}
                             </Text>
 
-                            <Box height={1} backgroundColor="surface" marginBottom="s" />
-
-                            {/* Recipe Row */}
-                            <Box flexDirection="row" justifyContent="space-around" marginBottom="s">
-                                <Box alignItems="center">
-                                    <Text variant="caption" color="textSecondary">Dose In</Text>
-                                    <Text variant="body" fontWeight="bold" color="textPrimary">{selectedBrew.doseIn}g</Text>
-                                </Box>
-                                <Box alignItems="center">
-                                    <Text variant="caption" color="textSecondary">Dose Out</Text>
-                                    <Text variant="body" fontWeight="bold" color="textPrimary">{selectedBrew.doseOut}g</Text>
-                                </Box>
-                                <Box alignItems="center">
-                                    <Text variant="caption" color="textSecondary">Time</Text>
-                                    <Text variant="body" fontWeight="bold" color="textPrimary">{selectedBrew.timeSeconds}s</Text>
-                                </Box>
-                                <Box alignItems="center">
-                                    <Text variant="caption" color="textSecondary">Ratio</Text>
-                                    <Text variant="body" fontWeight="bold" color="primary">1:{selectedBrew.doseIn > 0 ? (selectedBrew.doseOut / selectedBrew.doseIn).toFixed(1) : '?'}</Text>
-                                </Box>
-                                {selectedBrew.temperature ? (
-                                    <Box alignItems="center">
-                                        <Text variant="caption" color="textSecondary">Temp</Text>
-                                        <Text variant="body" fontWeight="bold" color="textPrimary">{selectedBrew.temperature}°C</Text>
-                                    </Box>
-                                ) : null}
+                            <Box flexDirection="row" flexWrap="wrap" gap="xs" marginTop="m">
+                                <Chip label={formatRatio(selectedBrew.doseIn, selectedBrew.doseOut)} tone="primary" small />
+                                <Chip label={brewStyle(selectedBrew.doseIn, selectedBrew.doseOut)} tone="accent" small />
+                                <Chip label={`${selectedBrew.doseIn}→${selectedBrew.doseOut}g`} small />
+                                <Chip label={`${selectedBrew.timeSeconds}s`} small />
+                                {selectedBrew.temperature ? <Chip label={`${selectedBrew.temperature}°C`} small /> : null}
                             </Box>
 
-                            <Box height={1} backgroundColor="surface" marginBottom="s" />
+                            <Box height={1} backgroundColor="border" marginVertical="m" />
 
-                            {/* Taste Profile */}
-                            <Box flexDirection="row" justifyContent="space-around" marginBottom="xs">
-                                <Box alignItems="center">
-                                    <Text variant="caption" color="textSecondary">Body</Text>
-                                    <Text variant="body" fontWeight="bold" color="textPrimary">{bodyLabel(selectedBrew.score.body)}</Text>
-                                </Box>
-                                <Box alignItems="center">
-                                    <Text variant="caption" color="textSecondary">Acidity</Text>
-                                    <Text variant="body" fontWeight="bold" color="textPrimary">{selectedBrew.score.acidity}/10</Text>
-                                </Box>
-                                <Box alignItems="center">
-                                    <Text variant="caption" color="textSecondary">Bitterness</Text>
-                                    <Text variant="body" fontWeight="bold" color="textPrimary">{selectedBrew.score.bitterness}/10</Text>
-                                </Box>
+                            <Box flexDirection="row" flexWrap="wrap" gap="xs">
+                                <Chip label={`Body: ${BODY_LABELS[selectedBrew.score.body] || selectedBrew.score.body}`} small />
+                                <Chip label={`Acidity ${selectedBrew.score.acidity}/10`} small />
+                                <Chip label={`Bitterness ${selectedBrew.score.bitterness}/10`} small />
                             </Box>
                             {selectedBrew.score.tasteNotes.length > 0 && (
                                 <Box flexDirection="row" flexWrap="wrap" gap="xs" marginTop="s">
                                     {selectedBrew.score.tasteNotes.map(note => (
-                                        <Box key={note} backgroundColor="mainBackground" paddingHorizontal="s" paddingVertical="xs" borderRadius={12}>
-                                            <Text variant="caption" color="primary">{note}</Text>
-                                        </Box>
+                                        <Chip key={note} label={note} tone="primary" small />
                                     ))}
                                 </Box>
                             )}
-                        </Box>
+                        </Card>
 
-                        <Text variant="subheader" fontSize={18} marginBottom="s">Your Goal</Text>
-                        <TextInput
-                            style={{
-                                backgroundColor: theme.colors.cardPrimaryBackground,
-                                color: theme.colors.textPrimary,
-                                padding: theme.spacing.m,
-                                borderRadius: 8,
-                                marginBottom: theme.spacing.m,
-                                borderWidth: 1,
-                                borderColor: theme.colors.surface,
-                                outlineStyle: 'none',
-                            } as any}
-                            placeholder="e.g. More sweetness, less acidity..."
-                            placeholderTextColor={theme.colors.textSecondary}
+                        <Box height={theme.spacing.l} />
+                        <SectionHeader title="Your Goal" />
+                        <TextField
                             value={goal}
                             onChangeText={setGoal}
+                            placeholder="e.g. More sweetness, less acidity…"
+                            multiline
                         />
 
-                        <Button
-                            label={loading ? "Analyzing..." : "Get AI Advice"}
-                            onPress={getAdvice}
-                            variant="primary"
-                        />
-                    </Box>
+                        <Box height={theme.spacing.m} />
+                        <Button label={loading ? 'Analyzing…' : 'Get AI Advice'} onPress={getAdvice} loading={loading} disabled={loading} />
+                    </>
                 )}
 
-                <Modal
-                    visible={modalVisible}
-                    animationType="slide"
-                    transparent={true}
-                    onRequestClose={() => setModalVisible(false)}
-                >
-                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 20 }}>
-                        <Box backgroundColor="mainBackground" borderRadius={16} maxHeight="80%" padding="m">
-                            <Text variant="subheader" marginBottom="m">Select a Brew</Text>
-                            <FlatList
-                                data={allBrews}
-                                keyExtractor={(item) => item.id!.toString()}
-                                ItemSeparatorComponent={() => <Box height={1} backgroundColor="surface" />}
-                                renderItem={({ item }) => {
-                                    const isSelected = selectedBrew?.id === item.id;
-                                    const coffeeName = coffees[item.coffeeId!]?.name || 'Unknown Coffee';
-                                    const ratio = item.doseIn > 0 ? (item.doseOut / item.doseIn).toFixed(1) : '?';
-                                    return (
-                                        <TouchableOpacity
-                                            onPress={() => {
-                                                setSelectedBrew(item);
-                                                setModalVisible(false);
-                                                setAdvice('');
-                                            }}
-                                            style={{
-                                                padding: 14,
-                                                backgroundColor: isSelected ? theme.colors.cardPrimaryBackground : 'transparent',
-                                                borderLeftWidth: isSelected ? 3 : 0,
-                                                borderLeftColor: theme.colors.primary,
-                                            }}
-                                        >
-                                            <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-                                                <Text variant="body" color={isSelected ? 'primary' : 'textPrimary'} fontWeight="bold">
-                                                    {coffeeName}
-                                                </Text>
-                                                <Text variant="caption" color="textSecondary">
-                                                    {new Date(item.date).toLocaleDateString()}
-                                                </Text>
-                                            </Box>
-                                            <Text variant="caption" color="textSecondary" marginTop="xs">
-                                                {item.doseIn}g → {item.doseOut}g in {item.timeSeconds}s · 1:{ratio}
-                                                {item.score.tasteNotes.length > 0 ? ` · ${item.score.tasteNotes.slice(0, 2).join(', ')}` : ''}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    );
-                                }}
-                            />
-                            <Box marginTop="m">
-                                <Button label="Close" onPress={() => setModalVisible(false)} variant="outline" />
-                            </Box>
+                <BottomSheet visible={modalVisible} onClose={() => setModalVisible(false)} maxHeightPercent={0.8}>
+                    <Box padding="m">
+                        <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="m">
+                            <Text variant="subheader">Select a Brew</Text>
+                            <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={8}>
+                                <Text variant="body" color="textSecondary">Close</Text>
+                            </TouchableOpacity>
                         </Box>
-                    </View>
-                </Modal>
+                        <FlatList
+                            data={allBrews}
+                            keyExtractor={(item) => item.id!.toString()}
+                            ItemSeparatorComponent={() => <Box height={1} backgroundColor="borderWeak" />}
+                            renderItem={({ item }) => {
+                                const isSelected = selectedBrew?.id === item.id;
+                                const coffeeName = coffees[item.coffeeId!]?.name || 'Unknown Coffee';
+                                return (
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            setSelectedBrew(item);
+                                            setModalVisible(false);
+                                            setAdvice(null);
+                                            setError('');
+                                        }}
+                                        style={{ paddingVertical: 14, paddingHorizontal: 8 }}
+                                    >
+                                        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+                                            <Text variant="body" color={isSelected ? 'primary' : 'textPrimary'} fontWeight="bold">{coffeeName}</Text>
+                                            <Text variant="caption" color="textSecondary">{new Date(item.date).toLocaleDateString()}</Text>
+                                        </Box>
+                                        <Text variant="caption" color="textSecondary" marginTop="xs">
+                                            {item.doseIn}g → {item.doseOut}g · {item.timeSeconds}s · {formatRatio(item.doseIn, item.doseOut)}
+                                            {item.score.tasteNotes.length > 0 ? ` · ${item.score.tasteNotes.slice(0, 2).join(', ')}` : ''}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            }}
+                        />
+                    </Box>
+                </BottomSheet>
 
                 {loading && (
-                    <Box backgroundColor="cardPrimaryBackground" padding="l" borderRadius={12} marginTop="m" alignItems="center">
+                    <Card padding="l" style={{ marginTop: theme.spacing.m }}>
                         <CoffeeLoadingAnimation />
-                    </Box>
+                    </Card>
                 )}
 
-                {advice ? (
-                    <Box backgroundColor="surface" padding="m" borderRadius={8} marginTop="m">
-                        <Text variant="subheader" fontSize={20} color="primary" marginBottom="s">Suggestion</Text>
-                        <Markdown
-                            style={{
-                                body: { color: theme.colors.textPrimary, fontSize: 16, lineHeight: 24 },
-                                heading1: { color: theme.colors.primary, marginVertical: 10 },
-                                list_item: { marginVertical: 5 },
-                            }}
-                        >
-                            {advice}
-                        </Markdown>
+                {error ? (
+                    <Box marginTop="m">
+                        <Card padding="m">
+                            <Text variant="body" color="error">{error}</Text>
+                        </Card>
                     </Box>
                 ) : null}
+
+                {advice ? <AdviceView advice={advice} /> : null}
             </ScrollView>
+        </Box>
+    );
+}
+
+/* ---------- Structured-advice rendering ---------- */
+
+const DIAGNOSIS_META: Record<StructuredAdvice['diagnosisLabel'], { label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; tone: 'primary' | 'error' | 'accent' | 'textSecondary' }> = {
+    'under-extracted': { label: 'Under-extracted', icon: 'water-percent', tone: 'primary' },
+    'over-extracted': { label: 'Over-extracted', icon: 'fire', tone: 'error' },
+    'channeling': { label: 'Channeling', icon: 'shuffle-variant', tone: 'error' },
+    'too-fast': { label: 'Too fast', icon: 'speedometer', tone: 'primary' },
+    'too-slow': { label: 'Too slow', icon: 'speedometer-slow', tone: 'primary' },
+    'balanced': { label: 'Balanced', icon: 'check-decagram', tone: 'accent' },
+    'recipe-mismatch': { label: 'Recipe mismatch', icon: 'tune-variant', tone: 'primary' },
+    'other': { label: 'Notable issue', icon: 'alert-circle-outline', tone: 'textSecondary' },
+};
+
+function AdviceView({ advice }: { advice: StructuredAdvice }) {
+    const theme = useTheme();
+    const meta = DIAGNOSIS_META[advice.diagnosisLabel] ?? DIAGNOSIS_META.other;
+    const toneColor = meta.tone === 'textSecondary' ? theme.colors.textSecondary : theme.colors[meta.tone];
+
+    const confidenceLabel = `${advice.confidence} confidence`;
+
+    return (
+        <Box marginTop="m" gap="m">
+            {/* Working theory */}
+            <Box
+                backgroundColor="cardPrimaryBackground"
+                borderRadius={radii.l}
+                borderWidth={1}
+                borderColor="border"
+                padding="m"
+            >
+                <Box flexDirection="row" alignItems="center" gap="s" marginBottom="s">
+                    <Box
+                        width={36}
+                        height={36}
+                        borderRadius={radii.m}
+                        backgroundColor="cardElevated"
+                        alignItems="center"
+                        justifyContent="center"
+                    >
+                        <MaterialCommunityIcons name={meta.icon} size={20} color={toneColor} />
+                    </Box>
+                    <Box flex={1}>
+                        <Text
+                            variant="label"
+                            textTransform="uppercase"
+                            color="textTertiary"
+                            style={{ fontFamily: 'JetBrainsMono_400Regular', letterSpacing: 1.5 }}
+                        >
+                            Working theory · {confidenceLabel}
+                        </Text>
+                        <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 17, color: toneColor, marginTop: 2 }}>
+                            {meta.label}
+                        </Text>
+                    </Box>
+                </Box>
+                <Text variant="body" color="textPrimary" style={{ lineHeight: 22 }}>
+                    {advice.diagnosis}
+                </Text>
+            </Box>
+
+            {/* Experiments to try */}
+            <Box>
+                <SectionHeader title="Try on the next shot" />
+                <Box gap="s">
+                    {advice.adjustments.map((adj, i) => (
+                        <Box
+                            key={`${adj.parameter}-${i}`}
+                            backgroundColor="cardPrimaryBackground"
+                            borderRadius={radii.l}
+                            borderWidth={1}
+                            borderColor="border"
+                            padding="m"
+                            flexDirection="row"
+                            gap="m"
+                        >
+                            <Box
+                                width={28}
+                                height={28}
+                                borderRadius={radii.full}
+                                backgroundColor="primaryMuted"
+                                alignItems="center"
+                                justifyContent="center"
+                            >
+                                <Text style={{ fontFamily: 'JetBrainsMono_400Regular', fontSize: 13, fontWeight: '700', color: theme.colors.primary }}>
+                                    {i + 1}
+                                </Text>
+                            </Box>
+                            <Box flex={1}>
+                                <Box flexDirection="row" alignItems="center" gap="xs" marginBottom="xs" flexWrap="wrap">
+                                    <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 15, color: theme.colors.textPrimary }}>
+                                        {adj.parameter}
+                                    </Text>
+                                    <Feather name="arrow-right" size={14} color={theme.colors.textTertiary} />
+                                    <Text style={{ fontFamily: 'JetBrainsMono_400Regular', fontSize: 13, color: theme.colors.primary, fontWeight: '600' }}>
+                                        {adj.change}
+                                    </Text>
+                                </Box>
+                                <Text variant="caption" color="textSecondary" style={{ lineHeight: 18 }}>
+                                    {adj.rationale}
+                                </Text>
+                            </Box>
+                        </Box>
+                    ))}
+                </Box>
+            </Box>
+
+            {/* Expected result */}
+            <Box
+                backgroundColor="cardElevated"
+                borderRadius={radii.l}
+                borderWidth={1}
+                borderColor="border"
+                padding="m"
+                flexDirection="row"
+                gap="m"
+            >
+                <MaterialCommunityIcons name="cup" size={22} color={theme.colors.accent} />
+                <Box flex={1}>
+                    <Text
+                        variant="label"
+                        textTransform="uppercase"
+                        color="textTertiary"
+                        style={{ fontFamily: 'JetBrainsMono_400Regular', letterSpacing: 1.5 }}
+                        marginBottom="xs"
+                    >
+                        If the theory holds
+                    </Text>
+                    <Text variant="body" color="textPrimary" style={{ lineHeight: 22 }}>
+                        {advice.expectedResult}
+                    </Text>
+                </Box>
+            </Box>
+
+            {/* Iterative loop — one question to answer next shot. */}
+            {advice.nextCheck ? (
+                <Box
+                    backgroundColor="cardPrimaryBackground"
+                    borderRadius={radii.l}
+                    borderWidth={1}
+                    borderColor="border"
+                    padding="m"
+                    flexDirection="row"
+                    gap="m"
+                >
+                    <MaterialCommunityIcons name="help-circle-outline" size={22} color={theme.colors.primary} />
+                    <Box flex={1}>
+                        <Text
+                            variant="label"
+                            textTransform="uppercase"
+                            color="textTertiary"
+                            style={{ fontFamily: 'JetBrainsMono_400Regular', letterSpacing: 1.5 }}
+                            marginBottom="xs"
+                        >
+                            Check after the next shot
+                        </Text>
+                        <Text variant="body" color="textPrimary" style={{ lineHeight: 22 }}>
+                            {advice.nextCheck}
+                        </Text>
+                    </Box>
+                </Box>
+            ) : null}
+
+            {/* Honest disclaimer footer — keeps the contract clear. */}
+            <Text
+                variant="caption"
+                color="textTertiary"
+                style={{ lineHeight: 16, fontStyle: 'italic' }}
+                marginTop="xs"
+            >
+                Espresso has more hidden variables than the data can show — treat this as a starting point, log the next shot, and we'll refine together.
+            </Text>
         </Box>
     );
 }

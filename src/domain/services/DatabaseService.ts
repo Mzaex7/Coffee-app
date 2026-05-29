@@ -205,6 +205,7 @@ class DatabaseService {
         origin TEXT,
         variety TEXT,
         process TEXT,
+        roast_level TEXT,
         roast_date TEXT,
         notes TEXT,
         FOREIGN KEY (user_id) REFERENCES users(id)
@@ -221,6 +222,7 @@ class DatabaseService {
         time_seconds REAL NOT NULL,
         temperature REAL,
         grind_setting TEXT,
+        rating INTEGER,
         rating_body INTEGER,
         rating_acidity INTEGER,
         rating_bitterness INTEGER,
@@ -230,6 +232,17 @@ class DatabaseService {
         FOREIGN KEY (grinder_id) REFERENCES grinders(id)
       );
     `);
+
+        // Additive migrations for databases created before these columns existed.
+        await this.addColumnIfMissing('coffees', 'roast_level', 'TEXT');
+        await this.addColumnIfMissing('brew_logs', 'rating', 'INTEGER');
+    }
+
+    private async addColumnIfMissing(table: string, column: string, type: string): Promise<void> {
+        if (!this.db || Platform.OS === 'web') return;
+        const cols = await this.db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+        if (cols.some(c => c.name === column)) return;
+        await this.db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${type};`);
     }
 
     public getDatabase(): DBInterface {

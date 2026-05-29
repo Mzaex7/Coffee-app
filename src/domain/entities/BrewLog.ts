@@ -16,5 +16,6 @@ export interface BrewLog {
     timeSeconds: number;
     temperature?: number; // Celsius
     grindSetting?: string;
+    rating?: number; // overall shot quality, 0-5 (0 = unrated)
     score: Score;
 }
