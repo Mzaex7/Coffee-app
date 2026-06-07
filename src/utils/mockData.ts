@@ -3,6 +3,7 @@ import { BrewLog } from '../domain/entities/BrewLog';
 import { Coffee } from '../domain/entities/Coffee';
 import { CoffeeRepository } from '../data/repositories/CoffeeRepository';
 import { GrinderRepository } from '../data/repositories/GrinderRepository';
+import { supabase } from '../data/supabase';
 
 const daysAgoISO = (days: number) => {
     const d = new Date();
@@ -16,7 +17,7 @@ const SAMPLE_COFFEES: Omit<Coffee, 'id' | 'userId'>[] = [
     { name: 'Brazil Cerrado', roastery: 'Square Mile', origin: 'Brazil', variety: 'Yellow Bourbon', process: 'Natural', roastLevel: 'Medium-Dark', roastDate: daysAgoISO(30), notes: 'Hazelnut, milk chocolate' },
 ];
 
-export const generateMockData = async (count: number = 50, userId?: number) => {
+export const generateMockData = async (count: number = 50, userId?: string) => {
     const brewRepo = new BrewRepository();
     const coffeeRepo = new CoffeeRepository();
     const grinderRepo = new GrinderRepository();
@@ -105,4 +106,15 @@ export const generateMockData = async (count: number = 50, userId?: number) => {
         await brewRepo.create(brew);
     }
     console.log(`Generated ${count} mock brew logs.`);
+};
+
+/**
+ * Delete the signed-in user's brews, coffees and grinders. RLS scopes these to
+ * the caller, but we also filter on user_id explicitly (Supabase requires a
+ * filter on delete). Brews first to respect FK references.
+ */
+export const clearAllData = async (userId: string) => {
+    await supabase.from('brew_logs').delete().eq('user_id', userId);
+    await supabase.from('coffees').delete().eq('user_id', userId);
+    await supabase.from('grinders').delete().eq('user_id', userId);
 };

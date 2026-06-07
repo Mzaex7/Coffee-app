@@ -1,9 +1,9 @@
-import { databaseService } from '../../domain/services/DatabaseService';
+import { supabase } from '../supabase';
 import { Coffee, RoastLevel } from '../../domain/entities/Coffee';
 
 interface CoffeeRow {
     id: number;
-    user_id: number | null;
+    user_id: string | null;
     name: string;
     roastery: string;
     origin: string | null;
@@ -14,59 +14,81 @@ interface CoffeeRow {
     notes: string | null;
 }
 
-export class CoffeeRepository {
-    async getAll(userId?: number): Promise<Coffee[]> {
-        const db = databaseService.getDatabase();
-        if (userId) {
-            const rows = await db.getAllAsync<CoffeeRow>('SELECT * FROM coffees WHERE user_id = ?', [userId]);
-            return rows.map(this.mapRow);
-        }
-        const rows = await db.getAllAsync<CoffeeRow>('SELECT * FROM coffees');
-        return rows.map(this.mapRow);
-    }
+const COLUMNS = 'id, user_id, name, roastery, origin, variety, process, roast_level, roast_date, notes';
 
-    /** Get ALL coffees from ALL users — used by AI for cross-user analysis */
-    async getAllGlobal(): Promise<Coffee[]> {
-        const db = databaseService.getDatabase();
-        const rows = await db.getAllAsync<CoffeeRow>('SELECT * FROM coffees');
-        return rows.map(this.mapRow);
+/**
+ * CoffeeRepository — Supabase-backed. RLS scopes every query to the signed-in
+ * user automatically, so the userId argument is effectively advisory; we still
+ * accept it to keep the call sites unchanged.
+ */
+export class CoffeeRepository {
+    async getAll(_userId?: string): Promise<Coffee[]> {
+        const { data, error } = await supabase
+            .from('coffees')
+            .select(COLUMNS)
+            .order('created_at', { ascending: false });
+        if (error) throw new Error(error.message);
+        return (data as CoffeeRow[]).map(this.mapRow);
     }
 
     async getById(id: number): Promise<Coffee | null> {
-        const db = databaseService.getDatabase();
-        const row = await db.getFirstAsync<CoffeeRow>('SELECT * FROM coffees WHERE id = ?', [id]);
-        return row ? this.mapRow(row) : null;
+        const { data, error } = await supabase
+            .from('coffees')
+            .select(COLUMNS)
+            .eq('id', id)
+            .maybeSingle();
+        if (error) throw new Error(error.message);
+        return data ? this.mapRow(data as CoffeeRow) : null;
     }
 
     async create(coffee: Coffee): Promise<number> {
-        const db = databaseService.getDatabase();
-        const result = await db.runAsync(
-            'INSERT INTO coffees (user_id, name, roastery, origin, variety, process, roast_level, roast_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-                coffee.userId || null, coffee.name, coffee.roastery,
-                coffee.origin || null, coffee.variety || null, coffee.process || null,
-                coffee.roastLevel || null, coffee.roastDate || null, coffee.notes || null,
-            ]
-        );
-        return result.lastInsertRowId;
+        const userId = coffee.userId ?? (await this.requireUserId());
+        const { data, error } = await supabase
+            .from('coffees')
+            .insert({
+                user_id: userId,
+                name: coffee.name,
+                roastery: coffee.roastery,
+                origin: coffee.origin ?? null,
+                variety: coffee.variety ?? null,
+                process: coffee.process ?? null,
+                roast_level: coffee.roastLevel ?? null,
+                roast_date: coffee.roastDate ?? null,
+                notes: coffee.notes ?? null,
+            })
+            .select('id')
+            .single();
+        if (error) throw new Error(error.message);
+        return (data as { id: number }).id;
     }
 
     async update(coffee: Coffee): Promise<void> {
         if (!coffee.id) throw new Error('Coffee ID required for update');
-        const db = databaseService.getDatabase();
-        await db.runAsync(
-            'UPDATE coffees SET name = ?, roastery = ?, origin = ?, variety = ?, process = ?, roast_level = ?, roast_date = ?, notes = ? WHERE id = ?',
-            [
-                coffee.name, coffee.roastery, coffee.origin || null, coffee.variety || null,
-                coffee.process || null, coffee.roastLevel || null, coffee.roastDate || null,
-                coffee.notes || null, coffee.id,
-            ]
-        );
+        const { error } = await supabase
+            .from('coffees')
+            .update({
+                name: coffee.name,
+                roastery: coffee.roastery,
+                origin: coffee.origin ?? null,
+                variety: coffee.variety ?? null,
+                process: coffee.process ?? null,
+                roast_level: coffee.roastLevel ?? null,
+                roast_date: coffee.roastDate ?? null,
+                notes: coffee.notes ?? null,
+            })
+            .eq('id', coffee.id);
+        if (error) throw new Error(error.message);
     }
 
     async delete(id: number): Promise<void> {
-        const db = databaseService.getDatabase();
-        await db.runAsync('DELETE FROM coffees WHERE id = ?', [id]);
+        const { error } = await supabase.from('coffees').delete().eq('id', id);
+        if (error) throw new Error(error.message);
+    }
+
+    private async requireUserId(): Promise<string> {
+        const { data } = await supabase.auth.getUser();
+        if (!data.user) throw new Error('Not signed in');
+        return data.user.id;
     }
 
     private mapRow(row: CoffeeRow): Coffee {
