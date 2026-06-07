@@ -1,200 +1,85 @@
-import { databaseService } from './DatabaseService';
+import { supabase } from '../../data/supabase';
 import { User } from '../entities/User';
-import { Platform } from 'react-native';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 
 /**
- * AuthService — local-only authentication using SHA-256 hashed passwords.
- * Persists login state in localStorage (web) or a simple in-memory flag (native).
+ * AuthService — thin wrapper over Supabase Auth (email + password).
+ *
+ * Replaces the old local SHA-256 scheme. Session persistence, token refresh and
+ * restore-on-startup are all handled by the Supabase client (see data/supabase.ts);
+ * AuthContext subscribes to onAuthStateChange for live updates.
  */
 class AuthService {
     private static instance: AuthService;
-    private currentUser: User | null = null;
-
     private constructor() { }
 
     public static getInstance(): AuthService {
-        if (!AuthService.instance) {
-            AuthService.instance = new AuthService();
-        }
+        if (!AuthService.instance) AuthService.instance = new AuthService();
         return AuthService.instance;
     }
 
-    /**
-     * Hash a password using SHA-256 via SubtleCrypto (available in both web and RN).
-     */
-    private async hashPassword(password: string): Promise<string> {
-        // Use a simple hash approach that works cross-platform
-        // For web: use SubtleCrypto. For native: a simple fallback.
-        if (typeof globalThis.crypto?.subtle !== 'undefined') {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(password);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-        // Fallback: simple hash for environments without SubtleCrypto
-        let hash = 0;
-        for (let i = 0; i < password.length; i++) {
-            const char = password.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash |= 0; // Convert to 32bit integer
-        }
-        return Math.abs(hash).toString(16).padStart(8, '0');
+    /** Map a Supabase user into our domain User. */
+    public toUser(u: SupabaseUser | null | undefined): User | null {
+        if (!u) return null;
+        return {
+            id: u.id,
+            email: u.email ?? undefined,
+            username: (u.user_metadata?.username as string | undefined) ?? u.email?.split('@')[0],
+            createdAt: u.created_at,
+        };
     }
 
-    /**
-     * Register a new user. Throws if username already exists.
-     */
-    async register(username: string, password: string): Promise<User> {
-        const db = databaseService.getDatabase();
-        const trimmedUsername = username.trim().toLowerCase();
-
-        if (!trimmedUsername || !password) {
-            throw new Error('Username and password are required');
+    /** Register with email + password. A username can be carried in metadata. */
+    async register(email: string, password: string, username?: string): Promise<User> {
+        const { data, error } = await supabase.auth.signUp({
+            email: email.trim(),
+            password,
+            options: username ? { data: { username: username.trim() } } : undefined,
+        });
+        if (error) throw new Error(this.friendly(error.message));
+        const user = this.toUser(data.user);
+        if (!user) {
+            // Email confirmation is enabled on the project — no session yet.
+            throw new Error('Check your inbox to confirm your email, then sign in.');
         }
-        if (password.length < 4) {
-            throw new Error('Password must be at least 4 characters');
-        }
-
-        // Check if username exists
-        const existing = await db.getFirstAsync<{ id: number }>(
-            'SELECT id FROM users WHERE username = ?',
-            [trimmedUsername]
-        );
-        if (existing) {
-            throw new Error('Username already exists');
-        }
-
-        const passwordHash = await this.hashPassword(password);
-        const now = new Date().toISOString();
-
-        const result = await db.runAsync(
-            'INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)',
-            [trimmedUsername, passwordHash, now]
-        );
-
-        const user: User = {
-            id: result.lastInsertRowId,
-            username: trimmedUsername,
-            passwordHash,
-            createdAt: now,
-        };
-
-        this.currentUser = user;
-        this.persistLoginState(user.id!);
-
         return user;
     }
 
-    /**
-     * Login with username and password. Throws if credentials are invalid.
-     */
-    async login(username: string, password: string): Promise<User> {
-        const db = databaseService.getDatabase();
-        const trimmedUsername = username.trim().toLowerCase();
-
-        const passwordHash = await this.hashPassword(password);
-
-        const row = await db.getFirstAsync<{
-            id: number;
-            username: string;
-            password_hash: string;
-            created_at: string;
-        }>(
-            'SELECT * FROM users WHERE username = ? AND password_hash = ?',
-            [trimmedUsername, passwordHash]
-        );
-
-        if (!row) {
-            throw new Error('Invalid username or password');
-        }
-
-        const user: User = {
-            id: row.id,
-            username: row.username,
-            passwordHash: row.password_hash,
-            createdAt: row.created_at,
-        };
-
-        this.currentUser = user;
-        this.persistLoginState(user.id!);
-
+    /** Sign in with email + password. */
+    async login(email: string, password: string): Promise<User> {
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+        });
+        if (error) throw new Error(this.friendly(error.message));
+        const user = this.toUser(data.user);
+        if (!user) throw new Error('Sign-in failed. Please try again.');
         return user;
     }
 
-    /**
-     * Logout the current user.
-     */
-    logout(): void {
-        this.currentUser = null;
-        this.clearLoginState();
+    async logout(): Promise<void> {
+        await supabase.auth.signOut();
     }
 
-    /**
-     * Get the currently logged-in user, or null.
-     */
-    getCurrentUser(): User | null {
-        return this.currentUser;
+    /** Current session's user, or null. */
+    async getCurrentUser(): Promise<User | null> {
+        const { data } = await supabase.auth.getSession();
+        return this.toUser(data.session?.user);
     }
 
-    /**
-     * Try to restore login state from persisted storage on app startup.
-     */
-    async tryRestoreSession(): Promise<User | null> {
-        const userId = this.getPersistedUserId();
-        if (!userId) return null;
+    async getSession(): Promise<Session | null> {
+        const { data } = await supabase.auth.getSession();
+        return data.session;
+    }
 
-        const db = databaseService.getDatabase();
-        const row = await db.getFirstAsync<{
-            id: number;
-            username: string;
-            password_hash: string;
-            created_at: string;
-        }>(
-            'SELECT * FROM users WHERE id = ?',
-            [userId]
-        );
-
-        if (!row) {
-            this.clearLoginState();
-            return null;
+    private friendly(message: string): string {
+        const m = message.toLowerCase();
+        if (m.includes('invalid login')) return 'Invalid email or password.';
+        if (m.includes('already registered') || m.includes('already been registered')) {
+            return 'That email is already registered. Try signing in.';
         }
-
-        const user: User = {
-            id: row.id,
-            username: row.username,
-            passwordHash: row.password_hash,
-            createdAt: row.created_at,
-        };
-
-        this.currentUser = user;
-        return user;
-    }
-
-    private persistLoginState(userId: number): void {
-        try {
-            if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-                localStorage.setItem('brewref_logged_in_user', userId.toString());
-            }
-        } catch { }
-    }
-
-    private clearLoginState(): void {
-        try {
-            if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-                localStorage.removeItem('brewref_logged_in_user');
-            }
-        } catch { }
-    }
-
-    private getPersistedUserId(): number | null {
-        try {
-            if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-                const val = localStorage.getItem('brewref_logged_in_user');
-                return val ? parseInt(val, 10) : null;
-            }
-        } catch { }
-        return null;
+        if (m.includes('password should be')) return 'Password must be at least 6 characters.';
+        return message;
     }
 }
 

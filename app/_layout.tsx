@@ -7,10 +7,8 @@ import { useColorScheme } from 'react-native';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { databaseService } from '../src/domain/services/DatabaseService';
 import { AuthProvider, useAuth } from '../src/domain/context/AuthContext';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, View, Text, Platform } from 'react-native';
+import { ActivityIndicator, View, Platform } from 'react-native';
 import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
 
@@ -43,8 +41,6 @@ function AppNavigator() {
 
 export default function RootLayout() {
     const colorScheme = useColorScheme();
-    const [dbInitialized, setDbInitialized] = useState(false);
-    const [dbError, setDbError] = useState<Error | null>(null);
 
     const [fontsLoaded] = useFonts({
         Inter_400Regular,
@@ -53,33 +49,10 @@ export default function RootLayout() {
         JetBrainsMono_400Regular,
     });
 
-    useEffect(() => {
-        const init = async () => {
-            try {
-                await databaseService.initialize();
-            } catch (e) {
-                console.error("DB Init Failed", e);
-                setDbError(e as Error);
-            } finally {
-                setDbInitialized(true);
-            }
-        };
-        init();
-    }, []);
-
-    if (!dbInitialized || !fontsLoaded) {
+    if (!fontsLoaded) {
         return (
             <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground, justifyContent: 'center', alignItems: 'center' }}>
                 <ActivityIndicator size="large" color={theme.colors.primary} />
-            </View>
-        );
-    }
-
-    if (dbError) {
-        return (
-            <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-                <Text style={{ color: theme.colors.error, fontSize: 18, marginBottom: 10 }}>Database Initialization Failed</Text>
-                <Text style={{ color: theme.colors.textSecondary, marginBottom: 20 }}>{dbError.message}</Text>
             </View>
         );
     }

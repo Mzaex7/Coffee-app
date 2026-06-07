@@ -90,44 +90,6 @@ function CoffeeLoadingAnimation() {
     );
 }
 
-/**
- * Find brews from other users that are relevant based on shared equipment.
- * Relevance = other user has same grinder (name+brand+model) OR same coffee (name+roastery).
- */
-function findRelevantCrossUserBrews(
-    userCoffees: Coffee[],
-    userGrinders: Grinder[],
-    allBrews: BrewLog[],
-    allCoffees: Coffee[],
-    allGrinders: Grinder[],
-    userId: number,
-): BrewLog[] {
-    const userCoffeeKeys = new Set(
-        userCoffees.map(c => `${c.name?.toLowerCase()}|${c.roastery?.toLowerCase()}`)
-    );
-    const userGrinderKeys = new Set(
-        userGrinders.map(g => `${g.name?.toLowerCase()}|${g.brand?.toLowerCase()}|${g.model?.toLowerCase()}`)
-    );
-
-    const coffeeById: Record<number, Coffee> = {};
-    allCoffees.forEach(c => { if (c.id) coffeeById[c.id] = c; });
-    const grinderById: Record<number, Grinder> = {};
-    allGrinders.forEach(g => { if (g.id) grinderById[g.id] = g; });
-
-    return allBrews.filter(brew => {
-        if (brew.userId === userId) return false;
-        const brewCoffee = coffeeById[brew.coffeeId];
-        const brewGrinder = grinderById[brew.grinderId];
-        const coffeeMatch = brewCoffee
-            ? userCoffeeKeys.has(`${brewCoffee.name?.toLowerCase()}|${brewCoffee.roastery?.toLowerCase()}`)
-            : false;
-        const grinderMatch = brewGrinder
-            ? userGrinderKeys.has(`${brewGrinder.name?.toLowerCase()}|${brewGrinder.brand?.toLowerCase()}|${brewGrinder.model?.toLowerCase()}`)
-            : false;
-        return coffeeMatch || grinderMatch;
-    });
-}
-
 export default function AdvisorScreen() {
     const theme = useTheme();
     const router = useRouter();
@@ -179,35 +141,16 @@ export default function AdvisorScreen() {
         setError('');
 
         try {
-            const brewRepo = new BrewRepository();
-            const coffeeRepo = new CoffeeRepository();
-            const grinderRepo = new GrinderRepository();
-
-            const userBrews = await brewRepo.getAll(user.id);
-            const globalBrews = await brewRepo.getAllGlobal();
-            const globalCoffees = await coffeeRepo.getAllGlobal();
-            const globalGrinders = await grinderRepo.getAllGlobal();
-            const userCoffees = await coffeeRepo.getAll(user.id);
-            const userGrinders = await grinderRepo.getAll(user.id);
-
-            const crossUserBrews = findRelevantCrossUserBrews(
-                userCoffees, userGrinders, globalBrews, globalCoffees, globalGrinders, user.id,
-            );
-
-            const allCoffeeMap: Record<number, Coffee> = {};
-            globalCoffees.forEach(c => allCoffeeMap[c.id!] = c);
-            const allGrinderMap: Record<number, Grinder> = {};
-            globalGrinders.forEach(g => allGrinderMap[g.id!] = g);
-
+            // We only send the user's OWN data. Cross-user "community" context is
+            // fetched server-side (anonymized + opt-in) inside the Edge Function.
             const context: AdviceContext = {
-                coffee: selectedBrew.coffeeId ? allCoffeeMap[selectedBrew.coffeeId] : undefined,
-                grinder: selectedBrew.grinderId ? allGrinderMap[selectedBrew.grinderId] : undefined,
-                allCoffees: allCoffeeMap,
-                allGrinders: allGrinderMap,
+                coffee: selectedBrew.coffeeId ? coffees[selectedBrew.coffeeId] : undefined,
+                grinder: selectedBrew.grinderId ? grinders[selectedBrew.grinderId] : undefined,
+                allCoffees: coffees,
+                allGrinders: grinders,
             };
 
-            const combinedHistory = [...userBrews, ...crossUserBrews];
-            const result = await aiService.getStructuredAdvice(selectedBrew, combinedHistory, goal, context);
+            const result = await aiService.getStructuredAdvice(selectedBrew, allBrews, goal, context);
             setAdvice(result);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Unknown error');
@@ -430,6 +373,16 @@ function AdviceView({ advice }: { advice: StructuredAdvice }) {
                 <Text variant="body" color="textPrimary" style={{ lineHeight: 22 }}>
                     {advice.diagnosis}
                 </Text>
+
+                {/* Community signal — anonymized, counts only. */}
+                {advice.community && advice.community.shots > 0 ? (
+                    <Box flexDirection="row" alignItems="center" gap="xs" marginTop="m">
+                        <MaterialCommunityIcons name="account-group" size={15} color={theme.colors.accent} />
+                        <Text variant="caption" color="textSecondary">
+                            Backed by {advice.community.brewers} brewer{advice.community.brewers === 1 ? '' : 's'} · {advice.community.shots} shots on this bean
+                        </Text>
+                    </Box>
+                ) : null}
             </Box>
 
             {/* Experiments to try */}

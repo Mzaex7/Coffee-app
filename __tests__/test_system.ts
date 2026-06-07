@@ -3,64 +3,43 @@
  *  test_system.ts — Systemtest (1 Test)
  * ============================================================
  *
- * Testet den vollständigen technischen Ablauf über alle Schichten
- * hinweg: Domain (BrewBuilder) → Data (BrewRepository) → Database.
+ * Testet den vollständigen technischen Ablauf über alle Schichten:
+ * Domain (BrewBuilder) → Data (BrewRepository) → Supabase-Client.
  *
- * Im Gegensatz zu Integrationstests wird hier der komplette
- * vertikale Durchstich geprüft — vom Erzeugen eines BrewLog-
- * Objekts über die Persistierung bis zum Abruf und Vergleich
- * aller Felder.
- *
- * Kein Mocking einzelner Schichten — nur die Infrastrukturebene
- * (expo-sqlite) wird durch InMemoryDatabase ersetzt.
- *
- * Prinzipien:
- *   - Use-Case-basiert (nicht methodenbasiert)
- *   - Deterministisch
- *   - Realistischer Durchstich
+ * Nur die Infrastrukturebene (Supabase-Client) wird durch ein
+ * In-Memory-Mock ersetzt — der restliche Durchstich ist echt.
  *
  * Framework: Jest + ts-jest
  */
 
-import { InMemoryDatabase } from './helpers/InMemoryDatabase';
+jest.mock('../src/data/supabase', () => {
+    const { createMockSupabase } = require('./helpers/MockSupabase');
+    return { supabase: createMockSupabase(), hasSupabaseConfig: true };
+});
 
-// ── Infrastruktur-Ersatz: InMemoryDatabase statt expo-sqlite ──
-
-const testDb = new InMemoryDatabase();
-
-jest.mock('../src/domain/services/DatabaseService', () => ({
-    databaseService: {
-        getDatabase: () => testDb,
-        initialize: jest.fn().mockResolvedValue(undefined),
-    },
-}));
-
+import { supabase } from '../src/data/supabase';
 import { BrewBuilder } from '../src/domain/builders/BrewBuilder';
 import { CoffeeRepository } from '../src/data/repositories/CoffeeRepository';
 import { GrinderRepository } from '../src/data/repositories/GrinderRepository';
 import { BrewRepository } from '../src/data/repositories/BrewRepository';
 
+const mock = supabase as unknown as import('./helpers/MockSupabase').MockSupabase;
+
 describe('Systemtest — Vollständiger Brew-Logging-Workflow', () => {
 
     beforeEach(() => {
-        testDb.reset();
+        mock.__reset();
     });
 
     // ─────────────────────────────────────────────────────────
-    // Systemtest: Kompletter Workflow über alle Schichten
-    //
-    // Use Case: Benutzer legt Kaffee + Mühle an, erstellt
-    //           einen Brew via Builder, speichert ihn, und
-    //           ruft ihn anschließend erfolgreich ab.
+    // Use Case: Benutzer legt Kaffee + Mühle an, erstellt einen
+    //           Brew via Builder, speichert ihn und ruft ihn ab.
     //
     // Schichten: BrewBuilder (Domain)
-    //          → BrewRepository.create() (Data)
-    //          → InMemoryDatabase (Infrastruktur)
-    //          → BrewRepository.getAll() (Data)
-    //          → Vergleich mit Originaldaten (Assertion)
+    //          → CoffeeRepository / GrinderRepository / BrewRepository (Data)
+    //          → Supabase-Client (Mock, Infrastruktur)
     // ─────────────────────────────────────────────────────────
     test('Brew erstellen, persistieren und abrufen — alle Felder konsistent', async () => {
-        // Arrange — Stammdaten anlegen
         const coffeeRepo = new CoffeeRepository();
         const grinderRepo = new GrinderRepository();
         const brewRepo = new BrewRepository();
@@ -79,23 +58,16 @@ describe('Systemtest — Vollständiger Brew-Logging-Workflow', () => {
             model: 'C40 MK4',
         });
 
-        // Act — Brew über BrewBuilder erzeugen und persistieren
         const brew = new BrewBuilder()
             .setEquipment(coffeeId, grinderId)
             .setRecipe(18, 36, 28, 93)
             .setGrindSetting('22 Clicks')
-            .setScore({
-                body: 1,
-                acidity: 7,
-                bitterness: 3,
-                tasteNotes: ['Jasmine', 'Peach'],
-            })
+            .setScore({ body: 1, acidity: 7, bitterness: 3, tasteNotes: ['Jasmine', 'Peach'] })
             .build();
 
         const brewId = await brewRepo.create(brew);
         const allBrews = await brewRepo.getAll();
 
-        // Assert — Verifizierung des gesamten Datendurchstichs
         expect(allBrews).toHaveLength(1);
 
         const savedBrew = allBrews[0];

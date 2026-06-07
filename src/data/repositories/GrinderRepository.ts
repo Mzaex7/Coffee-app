@@ -1,46 +1,87 @@
-import { databaseService } from '../../domain/services/DatabaseService';
+import { supabase } from '../supabase';
 import { Grinder } from '../../domain/entities/Grinder';
 
-export class GrinderRepository {
-    async getAll(userId?: number): Promise<Grinder[]> {
-        const db = databaseService.getDatabase();
-        if (userId) {
-            return await db.getAllAsync<Grinder>('SELECT * FROM grinders WHERE user_id = ?', [userId]);
-        }
-        return await db.getAllAsync<Grinder>('SELECT * FROM grinders');
-    }
+interface GrinderRow {
+    id: number;
+    user_id: string | null;
+    name: string;
+    brand: string | null;
+    model: string | null;
+    description: string | null;
+}
 
-    /** Get ALL grinders from ALL users — used by AI for cross-user analysis */
-    async getAllGlobal(): Promise<Grinder[]> {
-        const db = databaseService.getDatabase();
-        return await db.getAllAsync<Grinder>('SELECT * FROM grinders');
+const COLUMNS = 'id, user_id, name, brand, model, description';
+
+export class GrinderRepository {
+    async getAll(_userId?: string): Promise<Grinder[]> {
+        const { data, error } = await supabase
+            .from('grinders')
+            .select(COLUMNS)
+            .order('created_at', { ascending: false });
+        if (error) throw new Error(error.message);
+        return (data as GrinderRow[]).map(this.mapRow);
     }
 
     async getById(id: number): Promise<Grinder | null> {
-        const db = databaseService.getDatabase();
-        return await db.getFirstAsync<Grinder>('SELECT * FROM grinders WHERE id = ?', [id]);
+        const { data, error } = await supabase
+            .from('grinders')
+            .select(COLUMNS)
+            .eq('id', id)
+            .maybeSingle();
+        if (error) throw new Error(error.message);
+        return data ? this.mapRow(data as GrinderRow) : null;
     }
 
     async create(grinder: Grinder): Promise<number> {
-        const db = databaseService.getDatabase();
-        const result = await db.runAsync(
-            'INSERT INTO grinders (user_id, name, brand, model, description) VALUES (?, ?, ?, ?, ?)',
-            [grinder.userId || null, grinder.name, grinder.brand, grinder.model, grinder.description || null]
-        );
-        return result.lastInsertRowId;
+        const userId = grinder.userId ?? (await this.requireUserId());
+        const { data, error } = await supabase
+            .from('grinders')
+            .insert({
+                user_id: userId,
+                name: grinder.name,
+                brand: grinder.brand ?? null,
+                model: grinder.model ?? null,
+                description: grinder.description ?? null,
+            })
+            .select('id')
+            .single();
+        if (error) throw new Error(error.message);
+        return (data as { id: number }).id;
     }
 
     async update(grinder: Grinder): Promise<void> {
         if (!grinder.id) throw new Error('Grinder ID required for update');
-        const db = databaseService.getDatabase();
-        await db.runAsync(
-            'UPDATE grinders SET name = ?, brand = ?, model = ?, description = ? WHERE id = ?',
-            [grinder.name, grinder.brand, grinder.model, grinder.description || null, grinder.id]
-        );
+        const { error } = await supabase
+            .from('grinders')
+            .update({
+                name: grinder.name,
+                brand: grinder.brand ?? null,
+                model: grinder.model ?? null,
+                description: grinder.description ?? null,
+            })
+            .eq('id', grinder.id);
+        if (error) throw new Error(error.message);
     }
 
     async delete(id: number): Promise<void> {
-        const db = databaseService.getDatabase();
-        await db.runAsync('DELETE FROM grinders WHERE id = ?', [id]);
+        const { error } = await supabase.from('grinders').delete().eq('id', id);
+        if (error) throw new Error(error.message);
+    }
+
+    private async requireUserId(): Promise<string> {
+        const { data } = await supabase.auth.getUser();
+        if (!data.user) throw new Error('Not signed in');
+        return data.user.id;
+    }
+
+    private mapRow(row: GrinderRow): Grinder {
+        return {
+            id: row.id,
+            userId: row.user_id ?? undefined,
+            name: row.name,
+            brand: row.brand ?? '',
+            model: row.model ?? '',
+            description: row.description ?? undefined,
+        };
     }
 }

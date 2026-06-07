@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, TouchableOpacity, Alert, Platform, Switch } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,10 +8,10 @@ import { Button } from '../src/presentation/components/Button';
 import { Card } from '../src/presentation/components/Card';
 import { SectionHeader } from '../src/presentation/components/SectionHeader';
 import { useAuth } from '../src/domain/context/AuthContext';
-import { databaseService } from '../src/domain/services/DatabaseService';
-import { generateMockData } from '../src/utils/mockData';
+import { supabase } from '../src/data/supabase';
+import { generateMockData, clearAllData } from '../src/utils/mockData';
 
-const APP_VERSION = '2.0';
+const APP_VERSION = '3.0';
 
 export default function SettingsScreen() {
     const theme = useTheme();
@@ -19,9 +19,30 @@ export default function SettingsScreen() {
     const insets = useSafeAreaInsets();
     const { user, logout } = useAuth();
     const [busy, setBusy] = useState<'mock' | 'nuke' | null>(null);
+    const [shareBrews, setShareBrews] = useState(true);
+    const [shareLoading, setShareLoading] = useState(true);
 
-    const handleLogout = () => {
-        logout();
+    // Load the user's community-sharing preference.
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            if (!user?.id) return;
+            const { data } = await supabase.from('profiles').select('share_brews').eq('id', user.id).maybeSingle();
+            if (active && data) setShareBrews(data.share_brews ?? true);
+            if (active) setShareLoading(false);
+        })();
+        return () => { active = false; };
+    }, [user?.id]);
+
+    const toggleShare = async (value: boolean) => {
+        if (!user?.id) return;
+        setShareBrews(value); // optimistic
+        const { error } = await supabase.from('profiles').update({ share_brews: value }).eq('id', user.id);
+        if (error) setShareBrews(!value); // revert on failure
+    };
+
+    const handleLogout = async () => {
+        await logout();
         router.replace('/auth');
     };
 
@@ -41,9 +62,10 @@ export default function SettingsScreen() {
 
     const handleNuke = () => {
         const doNuke = async () => {
+            if (!user?.id) return;
             setBusy('nuke');
             try {
-                await databaseService.nukeAllData();
+                await clearAllData(user.id);
                 if (Platform.OS === 'web') alert('All brews, beans and grinders cleared.');
                 else Alert.alert('Cleared', 'All brews, beans and grinders cleared.');
             } finally {
@@ -51,16 +73,17 @@ export default function SettingsScreen() {
             }
         };
         if (Platform.OS === 'web') {
-            if (confirm('Delete ALL brews, beans and grinders? This cannot be undone.')) doNuke();
+            if (confirm('Delete ALL your brews, beans and grinders? This cannot be undone.')) doNuke();
         } else {
-            Alert.alert('Clear all data', 'Delete ALL brews, beans and grinders? This cannot be undone.', [
+            Alert.alert('Clear all data', 'Delete ALL your brews, beans and grinders? This cannot be undone.', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete All', style: 'destructive', onPress: doNuke },
             ]);
         }
     };
 
-    const initial = (user?.username?.[0] || '?').toUpperCase();
+    const displayName = user?.username || user?.email?.split('@')[0] || 'Guest';
+    const initial = (displayName[0] || '?').toUpperCase();
 
     return (
         <Box flex={1} backgroundColor="mainBackground">
@@ -84,7 +107,6 @@ export default function SettingsScreen() {
                         alignItems="center"
                         justifyContent="center"
                     >
-                        {/* Optical nudge: the chevron's visual mass sits right of geometric center, so shift -1px. */}
                         <Ionicons name="chevron-back" size={22} color={theme.colors.primary} style={{ marginLeft: -1 }} />
                     </Box>
                 </TouchableOpacity>
@@ -101,9 +123,29 @@ export default function SettingsScreen() {
                             <Text variant="subheader" color="primary">{initial}</Text>
                         </Box>
                         <Box flex={1}>
-                            <Text variant="title">{user?.username || 'Guest'}</Text>
-                            <Text variant="caption" color="textSecondary" marginTop="xs">Signed in</Text>
+                            <Text variant="title">{displayName}</Text>
+                            <Text variant="caption" color="textSecondary" marginTop="xs">{user?.email || 'Signed in'}</Text>
                         </Box>
+                    </Box>
+                </Card>
+
+                <Box height={theme.spacing.l} />
+                <SectionHeader title="Community" />
+                <Card padding="m">
+                    <Box flexDirection="row" alignItems="center" gap="m">
+                        <Box flex={1}>
+                            <Text variant="body" color="textPrimary" style={{ fontFamily: 'Inter_600SemiBold' }}>Share my brews</Text>
+                            <Text variant="caption" color="textSecondary" marginTop="xs">
+                                Contribute your shots anonymously so the Brew Doctor can compare notes across everyone brewing the same bean. Only aggregated numbers are ever shared — never your identity.
+                            </Text>
+                        </Box>
+                        <Switch
+                            value={shareBrews}
+                            onValueChange={toggleShare}
+                            disabled={shareLoading}
+                            trackColor={{ false: theme.colors.surface, true: theme.colors.primary }}
+                            thumbColor={'#fff'}
+                        />
                     </Box>
                 </Card>
 
@@ -128,7 +170,7 @@ export default function SettingsScreen() {
                     <Text variant="subheader" color="primary">BrewRef</Text>
                     <Text variant="caption" color="textSecondary" marginTop="xs">Version {APP_VERSION}</Text>
                     <Text variant="body" color="textSecondary" marginTop="m">
-                        A dialing-in companion for espresso lovers — track beans, freshness, recipes and the shots that nailed it.
+                        A dialing-in companion for espresso lovers — track beans, freshness, recipes and the shots that nailed it, with AI advice informed by the whole community.
                     </Text>
                 </Card>
             </ScrollView>

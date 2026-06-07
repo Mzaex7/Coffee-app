@@ -1,6 +1,7 @@
+// Cloud auth identity (Supabase). The id is the auth.users uuid.
 export interface User {
-    id?: number;
-    username: string;
-    passwordHash: string;
-    createdAt: string; // ISO 8601
+    id: string;
+    email?: string;
+    username?: string;
+    createdAt?: string; // ISO 8601
 }

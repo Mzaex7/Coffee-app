@@ -40,3 +40,10 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local agent / editor state
+.claude/
+
+# supabase CLI local state
+supabase/.temp/
+supabase/.branches/

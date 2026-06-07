@@ -8,10 +8,11 @@ export default function AuthScreen() {
     const theme = useTheme();
     const { login, register, user, isLoading } = useAuth();
     const [isLogin, setIsLogin] = useState(true);
-    const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
+    const [notice, setNotice] = useState('');
     const [loading, setLoading] = useState(false);
 
     // Redirect to dashboard if already logged in
@@ -21,21 +22,26 @@ export default function AuthScreen() {
 
     const handleSubmit = async () => {
         setError('');
+        setNotice('');
         setLoading(true);
         try {
-            if (!username.trim() || !password) {
-                throw new Error('Please enter username and password');
+            if (!email.trim() || !password) {
+                throw new Error('Please enter email and password');
             }
             if (!isLogin) {
                 if (password !== confirmPassword) {
                     throw new Error('Passwords do not match');
                 }
-                await register(username, password);
+                await register(email, password);
             } else {
-                await login(username, password);
+                await login(email, password);
             }
         } catch (e: any) {
-            setError(e.message || 'An error occurred');
+            // Email-confirmation projects throw a friendly "check your inbox" message
+            // on register — surface it as a notice rather than an error.
+            const msg = e.message || 'An error occurred';
+            if (/confirm your email/i.test(msg)) setNotice(msg);
+            else setError(msg);
         } finally {
             setLoading(false);
         }
@@ -91,12 +97,14 @@ export default function AuthScreen() {
                     <Box marginBottom="l">
                         <TextInput
                             style={inputStyle}
-                            placeholder="Username"
+                            placeholder="Email"
                             placeholderTextColor={theme.colors.textSecondary + '80'}
-                            value={username}
-                            onChangeText={setUsername}
+                            value={email}
+                            onChangeText={setEmail}
                             autoCapitalize="none"
                             autoCorrect={false}
+                            keyboardType="email-address"
+                            textContentType="emailAddress"
                         />
 
                         <View style={{ height: 20 }} />
@@ -129,6 +137,13 @@ export default function AuthScreen() {
                     {error ? (
                         <Text variant="body" color="error" fontSize={13} marginBottom="m" style={{ opacity: 0.9 }}>
                             {error}
+                        </Text>
+                    ) : null}
+
+                    {/* Notice (e.g. email confirmation) */}
+                    {notice ? (
+                        <Text variant="body" color="accent" fontSize={13} marginBottom="m" style={{ opacity: 0.95 }}>
+                            {notice}
                         </Text>
                     ) : null}
 

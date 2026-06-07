@@ -16,7 +16,7 @@ const SIZE = 23;
 const NAV: NavItem[] = [
     { route: 'index', label: 'Overview', render: (c) => <MaterialIcons name="insights" size={SIZE} color={c} /> },
     { route: 'history', label: 'Brews', render: (c) => <MaterialCommunityIcons name="history" size={SIZE + 1} color={c} /> },
-    { route: 'coffees', label: 'Beans', render: (c) => <MaterialCommunityIcons name="leaf" size={SIZE} color={c} /> },
+    { route: 'coffees', label: 'Beans', render: (c, a) => <MaterialCommunityIcons name={a ? 'coffee' : 'coffee-outline'} size={SIZE} color={c} /> },
     { route: 'doctor', label: 'Doctor', render: (c, a) => <MaterialCommunityIcons name={a ? 'robot-happy' : 'robot-happy-outline'} size={SIZE} color={c} /> },
 ];
 

@@ -2,7 +2,7 @@ export type RoastLevel = 'Light' | 'Medium-Light' | 'Medium' | 'Medium-Dark' | '
 
 export interface Coffee {
     id?: number;
-    userId?: number;
+    userId?: string;
     name: string;
     roastery: string;
     origin?: string;
