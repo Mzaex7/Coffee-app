@@ -160,7 +160,7 @@ export const ManageCoffeesScreen = forwardRef<ShelfPanelHandle, { embedded?: boo
             <FlatList
                 data={coffees}
                 renderItem={renderItem}
-                keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
+                keyExtractor={(item, index) => (item.id ?? `i${index}`).toString()}
                 contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130 }}
                 showsVerticalScrollIndicator={false}
                 ItemSeparatorComponent={() => <Box height={theme.spacing.s} />}

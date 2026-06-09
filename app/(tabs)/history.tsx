@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, RefreshControl, TouchableOpacity, Alert, Platform } from 'react-native';
+import { ScrollView, FlatList, RefreshControl, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
 import { BottomSheet } from '../../src/presentation/components/BottomSheet';
 import { BrewRepository } from '../../src/data/repositories/BrewRepository';
@@ -115,12 +115,14 @@ export default function HistoryScreen() {
                 )}
             </ScreenHeader>
 
-            <ScrollView
+            <FlatList
+                data={visibleBrews}
+                keyExtractor={(brew, index) => (brew.id ?? `i${index}`).toString()}
                 contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130 }}
                 showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
-            >
-                {visibleBrews.length === 0 ? (
+                ItemSeparatorComponent={() => <Box height={theme.spacing.s} />}
+                ListEmptyComponent={
                     <Box marginTop="xl">
                         <EmptyState
                             icon="history"
@@ -128,33 +130,30 @@ export default function HistoryScreen() {
                             subtitle="Your logged shots will appear here. Pull to refresh after logging."
                         />
                     </Box>
-                ) : (
-                    <Box gap="s">
-                        {visibleBrews.map((brew) => {
-                            const tone = ratingTone(brew.rating);
-                            const badgeColor = tone === 'accent' ? theme.colors.accent : tone === 'primary' ? theme.colors.primary : theme.colors.textSecondary;
-                            return (
-                                <TouchableOpacity key={brew.id} onPress={() => openDetail(brew)} activeOpacity={0.85}>
-                                    <Box flexDirection="row" alignItems="center" gap="m" backgroundColor="cardPrimaryBackground" borderWidth={1} borderColor="border" borderRadius={radii.l} padding="m">
-                                        <Box width={46} height={46} borderRadius={radii.m} backgroundColor="cardElevated" borderWidth={1} borderColor="border" alignItems="center" justifyContent="center">
-                                            <Text style={{ fontFamily: MONO, fontSize: 15, fontWeight: '700', color: badgeColor }}>
-                                                {brew.rating ? brew.rating.toFixed(1) : '–'}
-                                            </Text>
-                                        </Box>
-                                        <Box flex={1}>
-                                            <Text variant="title" fontSize={15} numberOfLines={1}>{coffees[brew.coffeeId]?.name || 'Unknown Coffee'}</Text>
-                                            <Text marginTop="xs" style={{ fontFamily: MONO, fontSize: 11.5 }} color="textSecondary">
-                                                {formatRatio(brew.doseIn, brew.doseOut)} · {brew.doseIn}/{brew.doseOut}g · {brew.timeSeconds}s
-                                            </Text>
-                                        </Box>
-                                        <Text style={{ fontFamily: MONO, fontSize: 11 }} color="textTertiary">{shortDate(brew.date)}</Text>
-                                    </Box>
-                                </TouchableOpacity>
-                            );
-                        })}
-                    </Box>
-                )}
-            </ScrollView>
+                }
+                renderItem={({ item: brew }) => {
+                    const tone = ratingTone(brew.rating);
+                    const badgeColor = tone === 'accent' ? theme.colors.accent : tone === 'primary' ? theme.colors.primary : theme.colors.textSecondary;
+                    return (
+                        <TouchableOpacity onPress={() => openDetail(brew)} activeOpacity={0.85}>
+                            <Box flexDirection="row" alignItems="center" gap="m" backgroundColor="cardPrimaryBackground" borderWidth={1} borderColor="border" borderRadius={radii.l} padding="m">
+                                <Box width={46} height={46} borderRadius={radii.m} backgroundColor="cardElevated" borderWidth={1} borderColor="border" alignItems="center" justifyContent="center">
+                                    <Text style={{ fontFamily: MONO, fontSize: 15, fontWeight: '700', color: badgeColor }}>
+                                        {brew.rating ? brew.rating.toFixed(1) : '–'}
+                                    </Text>
+                                </Box>
+                                <Box flex={1}>
+                                    <Text variant="title" fontSize={15} numberOfLines={1}>{coffees[brew.coffeeId]?.name || 'Unknown Coffee'}</Text>
+                                    <Text marginTop="xs" style={{ fontFamily: MONO, fontSize: 11.5 }} color="textSecondary">
+                                        {formatRatio(brew.doseIn, brew.doseOut)} · {brew.doseIn}/{brew.doseOut}g · {brew.timeSeconds}s
+                                    </Text>
+                                </Box>
+                                <Text style={{ fontFamily: MONO, fontSize: 11 }} color="textTertiary">{shortDate(brew.date)}</Text>
+                            </Box>
+                        </TouchableOpacity>
+                    );
+                }}
+            />
 
             <BottomSheet visible={detailModalVisible} onClose={() => setDetailModalVisible(false)} maxHeightPercent={0.88}>
                 {selectedBrew && (

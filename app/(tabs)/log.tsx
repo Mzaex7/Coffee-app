@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollView, TouchableOpacity, Platform, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Button } from '../../src/presentation/components/Button';
@@ -62,6 +63,14 @@ export default function BrewLogScreen() {
     const rafRef = useRef<number | null>(null);
     const lastTickSecondRef = useRef<number>(0);
     const pulseAnim = useRef(new Animated.Value(1)).current;
+
+    // Keep the screen awake while a shot is being pulled — no free hand to
+    // tap the display, and iOS auto-lock would otherwise kill the readout.
+    useEffect(() => {
+        if (!isTimerRunning || Platform.OS === 'web') return;
+        activateKeepAwakeAsync('brew-timer');
+        return () => { deactivateKeepAwake('brew-timer'); };
+    }, [isTimerRunning]);
 
     useEffect(() => {
         if (!isTimerRunning) {
@@ -314,6 +323,12 @@ export default function BrewLogScreen() {
                                 </Box>
                             </TouchableOpacity>
                         </Box>
+                        {/* Close the loop: show that Stop wrote the value into the Time field. */}
+                        {!isTimerRunning && timerSeconds > 0 ? (
+                            <Text variant="caption" color="textTertiary" marginTop="m">
+                                Time field set to {timerSeconds.toFixed(1)} s
+                            </Text>
+                        ) : null}
                     </Box>
                 </Card>
 

@@ -8,11 +8,13 @@
  *
  * Voraussetzung: Die App muss lokal laufen (`npx expo start --web`).
  *
- * Der Test simuliert einen echten Benutzer, der:
- *   1. Die App im Browser öffnet
- *   2. Verifiziert, dass das Dashboard korrekt gerendert wird
- *   3. Zur Log-Seite navigiert und prüft, dass die Eingabefelder
- *      vorhanden sind
+ * Seit der Cloud-Migration ist die App auth-gated: Ein frischer
+ * Browser-Context (ohne Session) muss auf den Login umleiten.
+ * Der Test simuliert einen echten, nicht angemeldeten Benutzer:
+ *   1. App im Browser öffnen → Redirect auf /auth
+ *   2. Login-Formular (E-Mail + Passwort) wird gerendert
+ *   3. Wechsel in den Registrierungs-Modus funktioniert
+ *   4. "Forgot password?" ist im Login-Modus vorhanden
  *
  * Framework: Playwright Test
  */
@@ -21,44 +23,25 @@ import { test, expect } from '@playwright/test';
 
 test.describe('E2E-Test — BrewRef Web App', () => {
 
-    // ─────────────────────────────────────────────────────────
-    // E2E-Test: Dashboard laden und Brew Logger navigierbar
-    //
-    // Benutzerfluss:
-    //   App öffnen → Dashboard sichtbar → Statistik-Boxen prüfen
-    //   → zum Brew Logger navigieren → Eingabefelder vorhanden
-    //
-    // Verifiziert:
-    //   - Full-Stack-Rendering (Expo Web → React Native Web → UI)
-    //   - Navigation funktioniert
-    //   - Kernkomponenten werden gerendert
-    // ─────────────────────────────────────────────────────────
-    test('Dashboard lädt korrekt und Navigation zum Brew Logger funktioniert', async ({ page }) => {
-        // Arrange — App öffnen
+    test('Auth-Gate: App leitet zur Anmeldung und rendert das Formular', async ({ page }) => {
+        // Arrange — App öffnen (frischer Context = keine Session)
         await page.goto('http://localhost:8081');
 
-        // Act & Assert — Dashboard prüfen
-        // Warten bis die App geladen ist (DB-Initialisierung + Font-Loading)
-        await page.waitForTimeout(3000);
+        // Assert — Redirect auf den Auth-Screen, Branding sichtbar
+        await expect(page.getByText('BrewRef')).toBeVisible({ timeout: 20000 });
+        await expect(page.getByText('Welcome back.')).toBeVisible({ timeout: 10000 });
 
-        // Dashboard-Titel sollte sichtbar sein
-        const dashboardTitle = page.getByText('BrewRef');
-        await expect(dashboardTitle).toBeVisible({ timeout: 10000 });
+        // Login-Formular vorhanden
+        await expect(page.getByPlaceholder('Email')).toBeVisible();
+        await expect(page.getByPlaceholder('Password', { exact: true })).toBeVisible();
+        await expect(page.getByText('Forgot password?')).toBeVisible();
 
-        // Mindestens eine Statistik-Box sollte sichtbar sein
-        const beansLabel = page.getByText('Beans Stashed');
-        await expect(beansLabel).toBeVisible({ timeout: 5000 });
+        // Act — in den Registrierungs-Modus wechseln
+        await page.getByText('Register').click();
 
-        // Act — Zum Brew Logger navigieren (Tab-Klick)
-        const logTab = page.getByText('Log');
-        await logTab.click();
-
-        // Assert — Brew Logger Formularfelder prüfen
-        await page.waitForTimeout(1000);
-
-        // Der "Save Brew" oder "Dose In" Text sollte sichtbar sein
-        const doseInLabel = page.getByText('Dose In');
-        await expect(doseInLabel).toBeVisible({ timeout: 5000 });
+        // Assert — Registrierungs-Formular (Confirm-Feld) wird gerendert
+        await expect(page.getByText('Create your account.')).toBeVisible();
+        await expect(page.getByPlaceholder('Confirm password')).toBeVisible();
     });
 
 });
