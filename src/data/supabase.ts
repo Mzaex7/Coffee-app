@@ -1,6 +1,6 @@
 // URL polyfill must be imported before supabase-js on React Native.
 import 'react-native-url-polyfill/auto';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
@@ -34,3 +34,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
+
+// On native, token auto-refresh only runs reliably while the app is foregrounded.
+// Tie it to AppState (Supabase-recommended pattern) so sessions stay fresh after
+// long backgrounding instead of appearing expired.
+if (Platform.OS !== 'web') {
+    AppState.addEventListener('change', (state) => {
+        if (state === 'active') supabase.auth.startAutoRefresh();
+        else supabase.auth.stopAutoRefresh();
+    });
+}

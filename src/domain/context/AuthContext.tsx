@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { router } from 'expo-router';
 import { User } from '../entities/User';
 import { authService } from '../services/AuthService';
 import { supabase } from '../../data/supabase';
@@ -33,9 +34,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .finally(() => setIsLoading(false));
 
         // Keep React state in sync with sign-in / sign-out / token refresh.
-        const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
             setUser(authService.toUser(session?.user));
             setIsLoading(false);
+            // Arriving via a password-reset email link: route into the
+            // update-password screen instead of the regular app.
+            if (event === 'PASSWORD_RECOVERY') {
+                router.push('/reset-password');
+            }
         });
 
         return () => sub.subscription.unsubscribe();

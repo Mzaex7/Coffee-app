@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { Box, Text, useTheme } from '../src/presentation/theme';
 import { useAuth } from '../src/domain/context/AuthContext';
+import { authService } from '../src/domain/services/AuthService';
 import { Stack, Redirect } from 'expo-router';
 
 export default function AuthScreen() {
@@ -44,6 +45,31 @@ export default function AuthScreen() {
             else setError(msg);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleForgotPassword = async () => {
+        setError('');
+        setNotice('');
+        if (!email.trim()) {
+            setError('Enter your email above first, then tap "Forgot password?" again.');
+            return;
+        }
+        try {
+            await authService.requestPasswordReset(email);
+            setNotice('Password reset link sent — check your inbox.');
+        } catch (e: any) {
+            setError(e.message || 'Could not send the reset email.');
+        }
+    };
+
+    const handleResendConfirmation = async () => {
+        setError('');
+        try {
+            await authService.resendConfirmation(email);
+            setNotice('Confirmation email sent again — check your inbox (and spam).');
+        } catch (e: any) {
+            setError(e.message || 'Could not resend the confirmation email.');
         }
     };
 
@@ -111,7 +137,7 @@ export default function AuthScreen() {
 
                         <TextInput
                             style={inputStyle}
-                            placeholder="Password"
+                            placeholder={isLogin ? 'Password' : 'Password (min. 6 characters)'}
                             placeholderTextColor={theme.colors.textSecondary + '80'}
                             value={password}
                             onChangeText={setPassword}
@@ -147,6 +173,15 @@ export default function AuthScreen() {
                         </Text>
                     ) : null}
 
+                    {/* Resend confirmation — offered once the confirm-email notice appears */}
+                    {notice && /confirm/i.test(notice) ? (
+                        <TouchableOpacity onPress={handleResendConfirmation} style={{ marginBottom: 16 }}>
+                            <Text variant="body" color="primary" fontSize={13} fontWeight="bold">
+                                Resend confirmation email
+                            </Text>
+                        </TouchableOpacity>
+                    ) : null}
+
                     {/* Submit */}
                     <TouchableOpacity
                         onPress={handleSubmit}
@@ -168,6 +203,15 @@ export default function AuthScreen() {
                             {loading ? '...' : (isLogin ? 'Login' : 'Create Account')}
                         </Text>
                     </TouchableOpacity>
+
+                    {/* Forgot password — login mode only */}
+                    {isLogin ? (
+                        <TouchableOpacity onPress={handleForgotPassword} style={{ alignItems: 'center', marginBottom: 18 }}>
+                            <Text variant="body" color="textSecondary" fontSize={13} style={{ opacity: 0.7 }}>
+                                Forgot password?
+                            </Text>
+                        </TouchableOpacity>
+                    ) : null}
 
                     {/* Toggle */}
                     <TouchableOpacity

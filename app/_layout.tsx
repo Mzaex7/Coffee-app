@@ -36,6 +36,7 @@ function AppNavigator() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="auth" />
             <Stack.Screen name="settings" />
+            <Stack.Screen name="reset-password" />
         </Stack>
     );
 }

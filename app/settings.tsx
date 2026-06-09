@@ -8,6 +8,7 @@ import { Button } from '../src/presentation/components/Button';
 import { Card } from '../src/presentation/components/Card';
 import { SectionHeader } from '../src/presentation/components/SectionHeader';
 import { useAuth } from '../src/domain/context/AuthContext';
+import { authService } from '../src/domain/services/AuthService';
 import { supabase } from '../src/data/supabase';
 import { generateMockData, clearAllData } from '../src/utils/mockData';
 
@@ -18,7 +19,7 @@ export default function SettingsScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { user, logout } = useAuth();
-    const [busy, setBusy] = useState<'mock' | 'nuke' | null>(null);
+    const [busy, setBusy] = useState<'mock' | 'nuke' | 'delete' | null>(null);
     const [shareBrews, setShareBrews] = useState(true);
     const [shareLoading, setShareLoading] = useState(true);
 
@@ -78,6 +79,32 @@ export default function SettingsScreen() {
             Alert.alert('Clear all data', 'Delete ALL your brews, beans and grinders? This cannot be undone.', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete All', style: 'destructive', onPress: doNuke },
+            ]);
+        }
+    };
+
+    const handleDeleteAccount = () => {
+        const doDelete = async () => {
+            setBusy('delete');
+            try {
+                await authService.deleteAccount();
+                await logout();
+                router.replace('/auth');
+            } catch (e: any) {
+                const msg = 'Could not delete the account: ' + (e?.message || e);
+                if (Platform.OS === 'web') alert(msg);
+                else Alert.alert('Error', msg);
+            } finally {
+                setBusy(null);
+            }
+        };
+        const warning = 'This permanently deletes your account and ALL your data (brews, beans, grinders). This cannot be undone.';
+        if (Platform.OS === 'web') {
+            if (confirm(warning + '\n\nDelete account?')) doDelete();
+        } else {
+            Alert.alert('Delete account', warning, [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Delete forever', style: 'destructive', onPress: doDelete },
             ]);
         }
     };
@@ -152,6 +179,15 @@ export default function SettingsScreen() {
                 <Box height={theme.spacing.l} />
                 <SectionHeader title="Account" />
                 <Button label="Log Out" variant="outline" onPress={handleLogout} icon={<Ionicons name="log-out-outline" size={18} color={theme.colors.primary} />} />
+                <Box height={theme.spacing.s} />
+                <Button
+                    label="Delete Account"
+                    variant="danger"
+                    onPress={handleDeleteAccount}
+                    loading={busy === 'delete'}
+                    disabled={busy !== null}
+                    icon={<Ionicons name="trash-outline" size={18} color={theme.colors.error} />}
+                />
 
                 <Box height={theme.spacing.l} />
                 <SectionHeader title="Data" />

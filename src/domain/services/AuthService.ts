@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { supabase } from '../../data/supabase';
 import { User } from '../entities/User';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
@@ -58,6 +59,50 @@ class AuthService {
     }
 
     async logout(): Promise<void> {
+        await supabase.auth.signOut();
+    }
+
+    /**
+     * Send a password-reset email. The link routes back into the app
+     * (web origin or the brewref:// scheme) where /reset-password handles
+     * the PASSWORD_RECOVERY session.
+     */
+    async requestPasswordReset(email: string): Promise<void> {
+        const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined'
+            ? `${window.location.origin}/reset-password`
+            : 'brewref://reset-password';
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+        if (error) throw new Error(this.friendly(error.message));
+    }
+
+    /** Set a new password for the currently authenticated (recovery) session. */
+    async updatePassword(newPassword: string): Promise<void> {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw new Error(this.friendly(error.message));
+    }
+
+    /** Re-send the signup confirmation email. */
+    async resendConfirmation(email: string): Promise<void> {
+        const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
+        if (error) throw new Error(this.friendly(error.message));
+    }
+
+    /**
+     * Permanently delete the account server-side (App Store requirement).
+     * The delete-account Edge Function verifies the caller's JWT and removes
+     * the auth user; all data cascades via foreign keys. Signs out locally after.
+     */
+    async deleteAccount(): Promise<void> {
+        const { data, error } = await supabase.functions.invoke('delete-account');
+        if (error) {
+            let message = error.message;
+            try {
+                const ctx = await (error as { context?: { json?: () => Promise<{ error?: string }> } }).context?.json?.();
+                if (ctx?.error) message = ctx.error;
+            } catch { /* keep generic message */ }
+            throw new Error(message);
+        }
+        if ((data as { error?: string } | null)?.error) throw new Error((data as { error: string }).error);
         await supabase.auth.signOut();
     }
 
