@@ -1,24 +1,28 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
+    "name": "BrewRef",
+    "slug": "brewref",
+    "scheme": "brewref",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0E0C0A"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "requireFullScreen": true,
+      "bundleIdentifier": "com.maxzeitler.brewref"
     },
     "android": {
+      "package": "com.maxzeitler.brewref",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0E0C0A"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -28,7 +32,6 @@
     },
     "plugins": [
       "expo-router",
-      "expo-sqlite",
       "expo-font"
     ]
   }

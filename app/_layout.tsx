@@ -6,9 +6,10 @@ import theme from '../src/presentation/theme';
 import { useColorScheme } from 'react-native';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from '../src/domain/context/AuthContext';
-import { ActivityIndicator, View, Platform } from 'react-native';
+import { ActivityIndicator, View, Platform, useWindowDimensions } from 'react-native';
 import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
 
@@ -41,6 +42,10 @@ function AppNavigator() {
 
 export default function RootLayout() {
     const colorScheme = useColorScheme();
+    const { width } = useWindowDimensions();
+    // On native tablets (iPad) we center the app in a comfortable column instead
+    // of stretching the phone layout across the full screen.
+    const isTablet = Platform.OS !== 'web' && width >= 700;
 
     const [fontsLoaded] = useFonts({
         Inter_400Regular,
@@ -58,37 +63,39 @@ export default function RootLayout() {
     }
 
     return (
-        <GestureHandlerRootView style={{ flex: 1 }}>
-            <ThemeProvider theme={theme}>
-                <NavigationThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                    <AuthProvider>
-                        {/* Web Container Wrapper */}
-                        <View style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#0E0E0E' : theme.colors.mainBackground, alignItems: 'center', justifyContent: 'center' }}>
-                            <View style={{
-                                flex: 1,
-                                width: '100%',
-                                maxWidth: Platform.OS === 'web' ? 500 : '100%',
-                                maxHeight: Platform.OS === 'web' ? '95%' : '100%',
-                                backgroundColor: theme.colors.mainBackground,
-                                borderRadius: Platform.OS === 'web' ? 20 : 0,
-                                overflow: 'hidden',
-                                ...(Platform.OS === 'web' ? {
-                                    borderWidth: 1,
-                                    borderColor: '#333',
-                                    shadowColor: '#000',
-                                    shadowOffset: { width: 0, height: 10 },
-                                    shadowOpacity: 0.5,
-                                    shadowRadius: 20,
-                                    paddingBottom: 0,
-                                } : {})
-                            }}>
-                                <AppNavigator />
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <ThemeProvider theme={theme}>
+                    <NavigationThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                        <AuthProvider>
+                            {/* Centered container: web preview + iPad use a column; phones go full-bleed. */}
+                            <View style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#0E0E0E' : (isTablet ? '#000000' : theme.colors.mainBackground), alignItems: 'center', justifyContent: 'center' }}>
+                                <View style={{
+                                    flex: 1,
+                                    width: '100%',
+                                    maxWidth: Platform.OS === 'web' ? 500 : (isTablet ? 560 : '100%'),
+                                    maxHeight: Platform.OS === 'web' ? '95%' : '100%',
+                                    backgroundColor: theme.colors.mainBackground,
+                                    borderRadius: Platform.OS === 'web' ? 20 : 0,
+                                    overflow: 'hidden',
+                                    ...(Platform.OS === 'web' ? {
+                                        borderWidth: 1,
+                                        borderColor: '#333',
+                                        shadowColor: '#000',
+                                        shadowOffset: { width: 0, height: 10 },
+                                        shadowOpacity: 0.5,
+                                        shadowRadius: 20,
+                                        paddingBottom: 0,
+                                    } : {})
+                                }}>
+                                    <AppNavigator />
+                                </View>
                             </View>
-                        </View>
-                        <StatusBar style="light" />
-                    </AuthProvider>
-                </NavigationThemeProvider>
-            </ThemeProvider>
-        </GestureHandlerRootView>
+                            <StatusBar style="light" />
+                        </AuthProvider>
+                    </NavigationThemeProvider>
+                </ThemeProvider>
+            </GestureHandlerRootView>
+        </SafeAreaProvider>
     );
 }
