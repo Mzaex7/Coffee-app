@@ -150,7 +150,9 @@ export default function AdvisorScreen() {
                 allGrinders: grinders,
             };
 
-            const result = await aiService.getStructuredAdvice(selectedBrew, allBrews, goal, context);
+            // allBrews is sorted newest-first; 15 recent shots are plenty of
+            // context for the model and keep the request payload small.
+            const result = await aiService.getStructuredAdvice(selectedBrew, allBrews.slice(0, 15), goal, context);
             setAdvice(result);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Unknown error');

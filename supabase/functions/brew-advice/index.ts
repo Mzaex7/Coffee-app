@@ -171,6 +171,7 @@ interface CommunityStats {
     shots: number;
     median?: { doseIn: number; doseOut: number; ratio: number; timeSeconds: number; temperature: number; rating: number };
     topRecipe?: { shots: number; doseIn: number; doseOut: number; ratio: number; timeSeconds: number; temperature: number; rating: number };
+    sameGrinder?: { brewers: number; shots: number; medianGrind: number; medianTime: number; medianRating: number };
 }
 
 function communityBlock(stats: CommunityStats | null): string {
@@ -184,7 +185,33 @@ function communityBlock(stats: CommunityStats | null): string {
         const t = stats.topRecipe;
         lines.push(`Best-rated shots (rating ≥ 4, ${t.shots} shots): ${t.doseIn}g→${t.doseOut}g (1:${t.ratio}) in ${t.timeSeconds}s${t.temperature ? ` @ ${t.temperature}°C` : ''}.`);
     }
+    if (stats.sameGrinder) {
+        const g = stats.sameGrinder;
+        lines.push(`SAME GRINDER MODEL (${g.brewers} brewers, ${g.shots} shots on this bean): median grind setting ${g.medianGrind}, median time ${g.medianTime}s, median rating ${g.medianRating}/5. Grind numbers ARE directly comparable here — use this to sanity-check grind recommendations.`);
+    }
     return lines.join('\n');
+}
+
+/** Mirrors the grinder_key generated column: lower(trim(brand || ' ' || model)). */
+const grinderKeyOf = (g?: Grinder | null): string | null =>
+    g ? `${g.brand ?? ''} ${g.model ?? ''}`.trim().toLowerCase() || null : null;
+
+interface PreviousRound { advice: Record<string, unknown>; created_at: string }
+
+function previousRoundBlock(prev: PreviousRound | null): string {
+    if (!prev?.advice) return '';
+    const a = prev.advice as {
+        diagnosisLabel?: string; diagnosis?: string; nextCheck?: string;
+        adjustments?: Array<{ parameter?: string; change?: string }>;
+    };
+    const tried = (a.adjustments ?? [])
+        .map(x => `${x.parameter}: ${x.change}`)
+        .join('; ');
+    return `\n\n# Previous coaching round (your own last advice for this bean, ${prev.created_at.slice(0, 10)})
+Diagnosis then: ${a.diagnosisLabel ?? 'n/a'} — ${a.diagnosis ?? ''}
+You suggested: ${tried || 'n/a'}
+You asked the user to check: ${a.nextCheck ?? 'n/a'}
+The shot being analyzed now likely FOLLOWED that advice. Treat it as the outcome of that experiment: compare against the previous numbers, say whether the change appears to have worked, and answer your own check question before proposing the next step.`;
 }
 
 function parseAdviceJson(raw: string): Record<string, unknown> {
@@ -225,17 +252,45 @@ Deno.serve(async (req) => {
 
         if (!currentLog) return json({ error: 'Missing currentLog.' }, 400);
 
-        // --- Community lookup (RLS-respecting client using the caller's JWT) ---
+        // RLS-respecting client acting as the caller.
+        const sb = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_ANON_KEY')!,
+            { global: { headers: { Authorization: authHeader } } },
+        );
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user) return json({ error: 'Not signed in.' }, 401);
+
+        // --- Rate limit: max 10 advice calls per user per hour (advice_logs doubles as counter) ---
+        const since = new Date(Date.now() - 3600_000).toISOString();
+        const { count: recentCount } = await sb
+            .from('advice_logs')
+            .select('id', { count: 'exact', head: true })
+            .gte('created_at', since);
+        if ((recentCount ?? 0) >= 10) {
+            return json({ error: 'Rate limit reached (10 analyses per hour). Pull a few shots and come back.' }, 429);
+        }
+
+        // --- Community lookup (anonymized aggregates; opt-in + k-anonymity in SQL) ---
         let community: CommunityStats | null = null;
         const key = beanKey(coffee);
+        const gKey = grinderKeyOf(grinder);
         if (key) {
-            const sb = createClient(
-                Deno.env.get('SUPABASE_URL')!,
-                Deno.env.get('SUPABASE_ANON_KEY')!,
-                { global: { headers: { Authorization: authHeader } } },
-            );
-            const { data, error } = await sb.rpc('get_community_bean_stats', { p_bean_key: key });
+            const { data, error } = await sb.rpc('get_community_bean_stats', { p_bean_key: key, p_grinder_key: gKey });
             if (!error && data) community = data as CommunityStats;
+        }
+
+        // --- Previous coaching round for this bean (own rows only via RLS) ---
+        let previous: PreviousRound | null = null;
+        if (key) {
+            const { data: prev } = await sb
+                .from('advice_logs')
+                .select('advice, created_at')
+                .eq('bean_key', key)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (prev) previous = prev as PreviousRound;
         }
 
         // --- Build the prompt (same shape as the old client AIService) ---
@@ -300,7 +355,7 @@ ${currentLog.doseIn}g in → ${currentLog.doseOut}g out (1:${ratio}) in ${curren
 ${tasteBits.join(' · ')}
 
 # User goal
-${goal?.trim() ? goal.trim() : 'Balanced sweet shot — clear flavour, no harshness.'}${communityBlock(community)}${historyBlock}
+${goal?.trim() ? goal.trim() : 'Balanced sweet shot — clear flavour, no harshness.'}${communityBlock(community)}${previousRoundBlock(previous)}${historyBlock}
 
 Return the JSON advice now.`;
 
@@ -348,6 +403,15 @@ Return the JSON advice now.`;
         if (community?.median) {
             (advice as Record<string, unknown>).community = { brewers: community.brewers, shots: community.shots };
         }
+
+        // Persist the coaching round (also feeds the rate limiter and the next
+        // round's "previous advice" context). Non-fatal if it fails.
+        await sb.from('advice_logs').insert({
+            user_id: user.id,
+            brew_id: currentLog.id ?? null,
+            bean_key: key,
+            advice,
+        });
 
         return json(advice);
     } catch (e) {
