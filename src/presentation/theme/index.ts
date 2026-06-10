@@ -1,4 +1,5 @@
 import { createTheme, createBox, createText, useTheme as useRestyleTheme } from '@shopify/restyle';
+import { useWindowDimensions } from 'react-native';
 
 // ── BrewRef "Crema" palette ──────────────────────────────────────────
 // Warm espresso-toned dark theme. The neutrals are brown-tinted (not grey),
@@ -133,6 +134,28 @@ export type Theme = typeof theme;
 export const Box = createBox<Theme>();
 export const Text = createText<Theme>();
 export const useTheme = () => useRestyleTheme<Theme>();
+
+// ── Adaptive layout (iPad / desktop web) ─────────────────────────────
+/** Window width at which the wide (tablet/desktop) layout kicks in. */
+export const WIDE_BREAKPOINT = 700;
+/** Comfortable max content width on wide screens. */
+export const CONTENT_MAX_WIDTH = 920;
+
+/**
+ * True on iPad / desktop-web widths. Re-evaluates on rotation and window
+ * resize (incl. iPad Split View), so layouts adapt live.
+ */
+export const useIsWide = () => useWindowDimensions().width >= WIDE_BREAKPOINT;
+
+/**
+ * contentContainerStyle fragment: full-bleed on phones, centered column on
+ * wide screens. Spread into ScrollView/FlatList contentContainerStyle.
+ */
+export const contentColumn = (maxWidth: number = CONTENT_MAX_WIDTH) => ({
+    width: '100%' as const,
+    maxWidth,
+    alignSelf: 'center' as const,
+});
 
 // Numeric corner-radius scale (Restyle's borderRadius prop takes raw numbers here).
 // Tuned to the Crema design: soft note chips → rounded cards → hero panels.

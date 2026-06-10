@@ -1,5 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
-import { Stack, Redirect } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider } from '@shopify/restyle';
 import theme from '../src/presentation/theme';
@@ -7,14 +7,16 @@ import { useColorScheme } from 'react-native';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
+import * as ScreenOrientation from 'expo-screen-orientation';
 
 import { AuthProvider, useAuth } from '../src/domain/context/AuthContext';
-import { ActivityIndicator, View, Platform, useWindowDimensions } from 'react-native';
+import { useEffect } from 'react';
+import { ActivityIndicator, View, Platform, Dimensions } from 'react-native';
 import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
 
 function AppNavigator() {
-    const { user, isLoading } = useAuth();
+    const { isLoading } = useAuth();
 
     if (isLoading) {
         return (
@@ -43,10 +45,6 @@ function AppNavigator() {
 
 export default function RootLayout() {
     const colorScheme = useColorScheme();
-    const { width } = useWindowDimensions();
-    // On native tablets (iPad) we center the app in a comfortable column instead
-    // of stretching the phone layout across the full screen.
-    const isTablet = Platform.OS !== 'web' && width >= 700;
 
     const [fontsLoaded] = useFonts({
         Inter_400Regular,
@@ -54,6 +52,19 @@ export default function RootLayout() {
         Inter_700Bold,
         JetBrainsMono_400Regular,
     });
+
+    // Phones stay portrait; tablets (iPad) may rotate freely — the adaptive
+    // layout (useIsWide) re-flows on rotation and Split View resizes.
+    useEffect(() => {
+        if (Platform.OS === 'web') return;
+        const { width, height } = Dimensions.get('screen');
+        const isTabletDevice = Math.min(width, height) >= 600;
+        if (isTabletDevice) {
+            ScreenOrientation.unlockAsync().catch(() => { });
+        } else {
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => { });
+        }
+    }, []);
 
     if (!fontsLoaded) {
         return (
@@ -69,28 +80,10 @@ export default function RootLayout() {
                 <ThemeProvider theme={theme}>
                     <NavigationThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
                         <AuthProvider>
-                            {/* Centered container: web preview + iPad use a column; phones go full-bleed. */}
-                            <View style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#0E0E0E' : (isTablet ? '#000000' : theme.colors.mainBackground), alignItems: 'center', justifyContent: 'center' }}>
-                                <View style={{
-                                    flex: 1,
-                                    width: '100%',
-                                    maxWidth: Platform.OS === 'web' ? 500 : (isTablet ? 560 : '100%'),
-                                    maxHeight: Platform.OS === 'web' ? '95%' : '100%',
-                                    backgroundColor: theme.colors.mainBackground,
-                                    borderRadius: Platform.OS === 'web' ? 20 : 0,
-                                    overflow: 'hidden',
-                                    ...(Platform.OS === 'web' ? {
-                                        borderWidth: 1,
-                                        borderColor: '#333',
-                                        shadowColor: '#000',
-                                        shadowOffset: { width: 0, height: 10 },
-                                        shadowOpacity: 0.5,
-                                        shadowRadius: 20,
-                                        paddingBottom: 0,
-                                    } : {})
-                                }}>
-                                    <AppNavigator />
-                                </View>
+                            {/* Full-bleed on every platform — screens center their own
+                                content column on wide windows (iPad / desktop web). */}
+                            <View style={{ flex: 1, backgroundColor: theme.colors.mainBackground }}>
+                                <AppNavigator />
                             </View>
                             <StatusBar style="light" />
                         </AuthProvider>

@@ -54,7 +54,7 @@ export default function ResetPasswordScreen() {
             <Stack.Screen options={{ headerShown: false }} />
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
                 <ScrollView
-                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 40 }}
+                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 40, width: '100%', maxWidth: 480, alignSelf: 'center' }}
                     keyboardShouldPersistTaps="handled"
                 >
                     <Box marginBottom="xl">

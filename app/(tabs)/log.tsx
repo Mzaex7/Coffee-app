@@ -3,7 +3,7 @@ import { ScrollView, TouchableOpacity, Platform, Animated, Easing } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
+import { Box, Text, useTheme, radii, contentColumn } from '../../src/presentation/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Button } from '../../src/presentation/components/Button';
 import { Card } from '../../src/presentation/components/Card';
@@ -213,7 +213,7 @@ export default function BrewLogScreen() {
                     <Text variant="label" color="primary" fontWeight="bold" textTransform="uppercase">Reset</Text>
                 </TouchableOpacity>
             </Box>
-            <ScrollView contentContainerStyle={{ padding: theme.spacing.m, paddingBottom: 120, gap: theme.spacing.l }}>
+            <ScrollView contentContainerStyle={{ padding: theme.spacing.m, paddingBottom: 120, gap: theme.spacing.l, ...contentColumn(700) }}>
 
                 {/* Equipment */}
                 <Box>

@@ -3,7 +3,7 @@ import { FlatList, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform 
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import { Box, Text, useTheme, radii } from '../theme';
+import { Box, Text, useTheme, radii, useIsWide, contentColumn } from '../theme';
 import { CoffeeRepository } from '../../data/repositories/CoffeeRepository';
 import { Coffee, RoastLevel } from '../../domain/entities/Coffee';
 import { Button } from '../components/Button';
@@ -58,6 +58,7 @@ export const ManageCoffeesScreen = forwardRef<ShelfPanelHandle, { embedded?: boo
 
     const repo = new CoffeeRepository();
     const theme = useTheme();
+    const isWide = useIsWide();
     const { user } = useAuth();
 
     const loadCoffees = async () => {
@@ -133,7 +134,7 @@ export const ManageCoffeesScreen = forwardRef<ShelfPanelHandle, { embedded?: boo
     const renderItem = ({ item }: { item: Coffee }) => {
         const fresh = getFreshness(item.roastDate);
         return (
-            <Swipeable renderRightActions={() => renderRightActions(item.id!)}>
+            <Swipeable containerStyle={isWide ? { flex: 1 } : undefined} renderRightActions={() => renderRightActions(item.id!)}>
                 <Card onPress={() => openEdit(item)} padding="m">
                     <Box flexDirection="row" justifyContent="space-between" alignItems="flex-start">
                         <Box flex={1} marginRight="s">
@@ -161,7 +162,10 @@ export const ManageCoffeesScreen = forwardRef<ShelfPanelHandle, { embedded?: boo
                 data={coffees}
                 renderItem={renderItem}
                 keyExtractor={(item, index) => (item.id ?? `i${index}`).toString()}
-                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130 }}
+                key={isWide ? 'grid' : 'list'}
+                numColumns={isWide ? 2 : 1}
+                columnWrapperStyle={isWide ? { gap: theme.spacing.s } : undefined}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130, ...contentColumn() }}
                 showsVerticalScrollIndicator={false}
                 ItemSeparatorComponent={() => <Box height={theme.spacing.s} />}
                 ListEmptyComponent={

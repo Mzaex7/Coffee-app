@@ -4,7 +4,7 @@ import { BottomSheet } from '../components/BottomSheet';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import { Box, Text, useTheme, radii } from '../theme';
+import { Box, Text, useTheme, radii, useIsWide, contentColumn } from '../theme';
 import { GrinderRepository } from '../../data/repositories/GrinderRepository';
 import { Grinder } from '../../domain/entities/Grinder';
 import { Button } from '../components/Button';
@@ -29,6 +29,7 @@ export const ManageGrindersScreen = forwardRef<ShelfPanelHandle, { embedded?: bo
 
     const repo = new GrinderRepository();
     const theme = useTheme();
+    const isWide = useIsWide();
     const { user } = useAuth();
 
     const loadGrinders = async () => {
@@ -95,7 +96,7 @@ export const ManageGrindersScreen = forwardRef<ShelfPanelHandle, { embedded?: bo
     );
 
     const renderItem = ({ item }: { item: Grinder }) => (
-        <Swipeable renderRightActions={() => renderRightActions(item.id!)}>
+        <Swipeable containerStyle={isWide ? { flex: 1 } : undefined} renderRightActions={() => renderRightActions(item.id!)}>
             <Card onPress={() => openEdit(item)} padding="m">
                 <Box flexDirection="row" alignItems="center" gap="m">
                     <Box
@@ -126,7 +127,10 @@ export const ManageGrindersScreen = forwardRef<ShelfPanelHandle, { embedded?: bo
                 data={grinders}
                 renderItem={renderItem}
                 keyExtractor={(item, index) => (item.id ?? `i${index}`).toString()}
-                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130 }}
+                key={isWide ? 'grid' : 'list'}
+                numColumns={isWide ? 2 : 1}
+                columnWrapperStyle={isWide ? { gap: theme.spacing.s } : undefined}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130, ...contentColumn() }}
                 showsVerticalScrollIndicator={false}
                 ItemSeparatorComponent={() => <Box height={theme.spacing.s} />}
                 ListEmptyComponent={

@@ -72,33 +72,34 @@ eas env:create --environment production --name EXPO_PUBLIC_SUPABASE_ANON_KEY --v
 (oder im EAS-Dashboard unter *Environment Variables*). Der Gemini-Key bleibt
 weiterhin **nur** als Supabase-Edge-Function-Secret — nie im App-Bundle.
 
-## D) iPad-Unterstützung
+## D) iPad-Unterstützung (aktives Layout)
 
-BrewRef ist für **iPhone und iPad** vorbereitet — ein einziger Universal-Build
-deckt beide ab (kein separates Target nötig):
+BrewRef ist für **iPhone und iPad** gebaut — ein einziger Universal-Build deckt
+beide ab, und das iPad bekommt ein **eigenes, aktives Layout** statt einer
+hochskalierten Phone-UI:
 
-- `app.json` → `ios.supportsTablet: true` — die App läuft nativ auf dem iPad
-  (nicht nur als hochskalierte iPhone-App).
-- `ios.requireFullScreen: true` — die App läuft im Vollbild. Das erlaubt das
-  bewusst **portrait-orientierte** Design auf dem iPad, ohne dass Apple (wegen
-  Split-View-Multitasking) alle Ausrichtungen verlangt — review-sicher.
-- **Responsives Layout:** Auf großen Screens (iPad, Breite ≥ 700 pt) zentriert
-  sich die App in einer angenehmen Spalte (≤ 560 pt) statt die Phone-Oberfläche
-  über die volle Breite zu zerren — gerahmt von einem dezenten dunklen Rand.
-  Auf dem iPhone bleibt alles full-bleed. (Logik in `app/_layout.tsx`.)
-- Korrekte Safe-Area-Insets über `SafeAreaProvider` für Notch/Dynamic Island
-  (iPhone) **und** iPad.
+- **Adaptives Layout-System** (`useIsWide()` in `src/presentation/theme`,
+  Breakpoint 700 pt): reagiert live auf Rotation, Fenstergröße und iPad
+  **Split View / Slide Over** — wird das Fenster schmal, fällt die App
+  automatisch aufs Phone-Layout zurück.
+- **Dashboard**: zweispaltig (links Last-Shot-Hero + „Dial in again", rechts
+  Stat-Karten + 14-Tage-Chart).
+- **Brews & Shelf**: 2-Spalten-Karten-Grid statt einspaltiger Liste.
+- **Brew Doctor**: Two-Pane — links Shot + Ziel, rechts die Coaching-Karten.
+- **Navigation**: Auf breiten Screens wird die Tab-Bar zum zentrierten,
+  schwebenden **Dock** (Pille mit FAB) statt einer gestreckten Phone-Leiste.
+- **Orientierung**: `orientation: "default"` + `requireFullScreen: false` —
+  iPad darf frei rotieren und Multitasking nutzen; iPhones werden zur Laufzeit
+  auf Portrait gelockt (`expo-screen-orientation` in `app/_layout.tsx`).
+- Dasselbe responsive System gilt für **Desktop-Web** — der Vercel/Netlify-
+  Deploy nutzt breite Fenster genauso aus.
 
-**iPad lokal testen:** geht genauso über Expo Go (Abschnitt A) — Expo Go aufs
-iPad laden, denselben QR scannen.
+**iPad lokal testen:** wie Abschnitt A — Expo Go aufs iPad laden, denselben QR
+scannen. Rotation und Split View einfach ausprobieren.
 
 **Für den Store:** App Store Connect verlangt **separate Screenshots für iPad**
-(z. B. 13″ und ggf. 11″) zusätzlich zu den iPhone-Screenshots. Der Build selbst
-deckt iPad automatisch ab.
-
-> Später Landscape/Split-View auf dem iPad gewünscht? Dann `requireFullScreen`
-> entfernen, `orientation` auf `"default"` setzen und die Screens für breite
-> Layouts anpassen — aktuell bewusst portrait gehalten.
+(13″, ggf. 11″) zusätzlich zu den iPhone-Screenshots. Der Build selbst deckt
+iPad automatisch ab.
 
 ### Vor dem ersten Release noch erledigen
 - **App-Icon** ersetzen: `assets/icon.png` ist aktuell das Expo-Standard-Icon.

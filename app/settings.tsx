@@ -3,7 +3,7 @@ import { ScrollView, TouchableOpacity, Alert, Platform, Switch } from 'react-nat
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Box, Text, useTheme, radii } from '../src/presentation/theme';
+import { Box, Text, useTheme, radii, contentColumn } from '../src/presentation/theme';
 import { Button } from '../src/presentation/components/Button';
 import { Card } from '../src/presentation/components/Card';
 import { SectionHeader } from '../src/presentation/components/SectionHeader';
@@ -142,7 +142,7 @@ export default function SettingsScreen() {
                 </Box>
             </Box>
 
-            <ScrollView contentContainerStyle={{ padding: theme.spacing.m, paddingBottom: theme.spacing.xl }}>
+            <ScrollView contentContainerStyle={{ padding: theme.spacing.m, paddingBottom: theme.spacing.xl, ...contentColumn(700) }}>
                 {/* Profile */}
                 <Card padding="l">
                     <Box flexDirection="row" alignItems="center" gap="m">

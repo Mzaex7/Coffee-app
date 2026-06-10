@@ -95,6 +95,9 @@ export default function AuthScreen() {
                         flexGrow: 1,
                         justifyContent: 'center',
                         paddingHorizontal: 40,
+                        width: '100%',
+                        maxWidth: 480,
+                        alignSelf: 'center',
                     }}
                     keyboardShouldPersistTaps="handled"
                 >

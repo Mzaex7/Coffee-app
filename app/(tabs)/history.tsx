@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, FlatList, RefreshControl, TouchableOpacity, Alert, Platform } from 'react-native';
-import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
+import { Box, Text, useTheme, radii, useIsWide, contentColumn } from '../../src/presentation/theme';
 import { BottomSheet } from '../../src/presentation/components/BottomSheet';
 import { BrewRepository } from '../../src/data/repositories/BrewRepository';
 import { BrewLog } from '../../src/domain/entities/BrewLog';
@@ -35,6 +35,7 @@ const ratingTone = (r?: number): 'accent' | 'primary' | 'textSecondary' =>
 export default function HistoryScreen() {
     const theme = useTheme();
     const { user } = useAuth();
+    const isWide = useIsWide();
     const [brews, setBrews] = useState<BrewLog[]>([]);
     const [coffees, setCoffees] = useState<Record<number, Coffee>>({});
     const [refreshing, setRefreshing] = useState(false);
@@ -117,8 +118,13 @@ export default function HistoryScreen() {
 
             <FlatList
                 data={visibleBrews}
+                // numColumns can't change on the fly — remount via key when the
+                // layout flips between list (phone) and grid (iPad/desktop).
+                key={isWide ? 'grid' : 'list'}
+                numColumns={isWide ? 2 : 1}
+                columnWrapperStyle={isWide ? { gap: theme.spacing.s } : undefined}
                 keyExtractor={(brew, index) => (brew.id ?? `i${index}`).toString()}
-                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130 }}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130, ...contentColumn() }}
                 showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
                 ItemSeparatorComponent={() => <Box height={theme.spacing.s} />}
@@ -135,7 +141,7 @@ export default function HistoryScreen() {
                     const tone = ratingTone(brew.rating);
                     const badgeColor = tone === 'accent' ? theme.colors.accent : tone === 'primary' ? theme.colors.primary : theme.colors.textSecondary;
                     return (
-                        <TouchableOpacity onPress={() => openDetail(brew)} activeOpacity={0.85}>
+                        <TouchableOpacity onPress={() => openDetail(brew)} activeOpacity={0.85} style={isWide ? { flex: 1 } : undefined}>
                             <Box flexDirection="row" alignItems="center" gap="m" backgroundColor="cardPrimaryBackground" borderWidth={1} borderColor="border" borderRadius={radii.l} padding="m">
                                 <Box width={46} height={46} borderRadius={radii.m} backgroundColor="cardElevated" borderWidth={1} borderColor="border" alignItems="center" justifyContent="center">
                                     <Text style={{ fontFamily: MONO, fontSize: 15, fontWeight: '700', color: badgeColor }}>

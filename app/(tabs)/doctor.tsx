@@ -2,7 +2,7 @@ import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { FlatList, TouchableOpacity, ScrollView, View, Animated, Easing } from 'react-native';
 import { BottomSheet } from '../../src/presentation/components/BottomSheet';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
+import { Box, Text, useTheme, radii, useIsWide, contentColumn } from '../../src/presentation/theme';
 import { Button } from '../../src/presentation/components/Button';
 import { Card } from '../../src/presentation/components/Card';
 import { Chip } from '../../src/presentation/components/Chip';
@@ -94,6 +94,7 @@ export default function AdvisorScreen() {
     const theme = useTheme();
     const router = useRouter();
     const { user } = useAuth();
+    const isWide = useIsWide();
     const [advice, setAdvice] = useState<StructuredAdvice | null>(null);
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState(false);
@@ -187,7 +188,7 @@ export default function AdvisorScreen() {
             </ScreenHeader>
 
             <ScrollView
-                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130 }}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130, ...contentColumn(1040) }}
                 showsVerticalScrollIndicator={false}
             >
                 {!selectedBrew ? (
@@ -200,7 +201,9 @@ export default function AdvisorScreen() {
                         />
                     </Box>
                 ) : (
-                    <>
+                    <Box flexDirection={isWide ? 'row' : 'column'} gap={isWide ? 'l' : undefined} alignItems={isWide ? 'flex-start' : undefined}>
+                    {/* Left pane (wide) / top section (phone): brew + goal + action */}
+                    <Box flex={isWide ? 1 : undefined}>
                         <SectionHeader title="Selected Brew" action={{ label: 'Change', onPress: () => setModalVisible(true) }} />
                         <Card padding="m">
                             <Box flexDirection="row" justifyContent="space-between" alignItems="flex-start">
@@ -254,7 +257,45 @@ export default function AdvisorScreen() {
 
                         <Box height={theme.spacing.m} />
                         <Button label={loading ? 'Analyzing…' : 'Get AI Advice'} onPress={getAdvice} loading={loading} disabled={loading} />
-                    </>
+                    </Box>
+
+                    {/* Right pane (wide) / below (phone): loading, error, advice */}
+                    <Box flex={isWide ? 1.1 : undefined}>
+                        {loading && (
+                            <Card padding="l" style={{ marginTop: theme.spacing.m }}>
+                                <CoffeeLoadingAnimation />
+                            </Card>
+                        )}
+
+                        {error ? (
+                            <Box marginTop="m">
+                                <Card padding="m">
+                                    <Text variant="body" color="error">{error}</Text>
+                                </Card>
+                            </Box>
+                        ) : null}
+
+                        {advice ? <AdviceView advice={advice} /> : null}
+
+                        {/* Idle placeholder keeps the wide right pane intentional. */}
+                        {isWide && !loading && !error && !advice ? (
+                            <Box
+                                marginTop="m"
+                                borderRadius={radii.l}
+                                borderWidth={1}
+                                borderColor="borderWeak"
+                                padding="xl"
+                                alignItems="center"
+                                style={{ borderStyle: 'dashed' }}
+                            >
+                                <MaterialCommunityIcons name="robot-happy-outline" size={28} color={theme.colors.textTertiary} />
+                                <Text variant="body" color="textTertiary" marginTop="s" textAlign="center">
+                                    Your coaching advice will appear here.
+                                </Text>
+                            </Box>
+                        ) : null}
+                    </Box>
+                    </Box>
                 )}
 
                 <BottomSheet visible={modalVisible} onClose={() => setModalVisible(false)} maxHeightPercent={0.8}>
@@ -296,22 +337,6 @@ export default function AdvisorScreen() {
                         />
                     </Box>
                 </BottomSheet>
-
-                {loading && (
-                    <Card padding="l" style={{ marginTop: theme.spacing.m }}>
-                        <CoffeeLoadingAnimation />
-                    </Card>
-                )}
-
-                {error ? (
-                    <Box marginTop="m">
-                        <Card padding="m">
-                            <Text variant="body" color="error">{error}</Text>
-                        </Card>
-                    </Box>
-                ) : null}
-
-                {advice ? <AdviceView advice={advice} /> : null}
             </ScrollView>
         </Box>
     );

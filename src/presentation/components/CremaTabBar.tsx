@@ -3,7 +3,7 @@ import { TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Box, Text, useTheme, radii, amberGlow } from '../theme';
+import { Box, Text, useTheme, radii, amberGlow, cardShadow, useIsWide } from '../theme';
 
 type NavItem = {
     route: string;
@@ -23,10 +23,13 @@ const NAV: NavItem[] = [
 /**
  * Crema bottom navigation — four tabs around a floating amber FAB that opens
  * the brew logger. Hidden entirely while the Log screen is presented.
+ * On wide screens (iPad / desktop web) the bar becomes a centered floating
+ * dock instead of stretching edge to edge.
  */
 export const CremaTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
+    const isWide = useIsWide();
     const current = state.routes[state.index]?.name;
 
     // The Log screen is presented full-bleed (FAB → modal feel) without the bar.
@@ -57,16 +60,8 @@ export const CremaTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) 
         );
     };
 
-    return (
-        <Box
-            flexDirection="row"
-            alignItems="center"
-            justifyContent="space-around"
-            backgroundColor="cardPrimaryBackground"
-            borderTopWidth={1}
-            borderColor="border"
-            style={{ paddingTop: 12, paddingHorizontal: 14, paddingBottom: (insets.bottom || 10) + 6 }}
-        >
+    const inner = (
+        <>
             <Tab item={NAV[0]} />
             <Tab item={NAV[1]} />
 
@@ -89,6 +84,41 @@ export const CremaTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) 
 
             <Tab item={NAV[2]} />
             <Tab item={NAV[3]} />
+        </>
+    );
+
+    if (isWide) {
+        // Floating centered dock — reads as designed-for-iPad instead of a
+        // phone bar stretched across the full width.
+        return (
+            <Box alignItems="center" style={{ paddingBottom: (insets.bottom || 16) + 8, backgroundColor: 'transparent' }} pointerEvents="box-none">
+                <Box
+                    flexDirection="row"
+                    alignItems="center"
+                    justifyContent="space-around"
+                    backgroundColor="cardPrimaryBackground"
+                    borderWidth={1}
+                    borderColor="border"
+                    borderRadius={radii.full}
+                    style={{ width: '100%', maxWidth: 520, paddingTop: 12, paddingBottom: 10, paddingHorizontal: 22, ...cardShadow }}
+                >
+                    {inner}
+                </Box>
+            </Box>
+        );
+    }
+
+    return (
+        <Box
+            flexDirection="row"
+            alignItems="center"
+            justifyContent="space-around"
+            backgroundColor="cardPrimaryBackground"
+            borderTopWidth={1}
+            borderColor="border"
+            style={{ paddingTop: 12, paddingHorizontal: 14, paddingBottom: (insets.bottom || 10) + 6 }}
+        >
+            {inner}
         </Box>
     );
 };

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Box, Text } from '../theme';
+import { Box, Text, CONTENT_MAX_WIDTH } from '../theme';
 
 interface ScreenHeaderProps {
     title: string;
@@ -30,29 +30,32 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
 
     return (
         <Box paddingHorizontal="m" style={{ paddingTop: top, paddingBottom: 10 }}>
-            <Box flexDirection="row" justifyContent="space-between" alignItems="flex-start">
-                <Box flex={1}>
-                    {eyebrow ? (
+            {/* Header aligns with the screens' centered content column on wide screens. */}
+            <Box style={{ width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}>
+                <Box flexDirection="row" justifyContent="space-between" alignItems="flex-start">
+                    <Box flex={1}>
+                        {eyebrow ? (
+                            <Text
+                                variant="label"
+                                color="textTertiary"
+                                textTransform="uppercase"
+                                style={{ fontFamily: 'JetBrainsMono_400Regular', letterSpacing: 2 }}
+                            >
+                                {eyebrow}
+                            </Text>
+                        ) : null}
                         <Text
-                            variant="label"
-                            color="textTertiary"
-                            textTransform="uppercase"
-                            style={{ fontFamily: 'JetBrainsMono_400Regular', letterSpacing: 2 }}
+                            color="textPrimary"
+                            marginTop={eyebrow ? 'xs' : undefined}
+                            style={{ fontFamily: 'Inter_700Bold', fontSize: titleSize, letterSpacing: -0.5 }}
                         >
-                            {eyebrow}
+                            {title}
                         </Text>
-                    ) : null}
-                    <Text
-                        color="textPrimary"
-                        marginTop={eyebrow ? 'xs' : undefined}
-                        style={{ fontFamily: 'Inter_700Bold', fontSize: titleSize, letterSpacing: -0.5 }}
-                    >
-                        {title}
-                    </Text>
+                    </Box>
+                    {right}
                 </Box>
-                {right}
+                {children}
             </Box>
-            {children}
         </Box>
     );
 };

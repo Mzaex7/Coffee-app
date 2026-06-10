@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Box, Text, useTheme, radii } from '../../src/presentation/theme';
+import { Box, Text, useTheme, radii, useIsWide, contentColumn } from '../../src/presentation/theme';
 import { RefreshControl, ScrollView, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { BrewRepository } from '../../src/data/repositories/BrewRepository';
@@ -28,6 +28,7 @@ export default function DashboardScreen() {
     const theme = useTheme();
     const router = useRouter();
     const { user } = useAuth();
+    const isWide = useIsWide();
 
     const [brews, setBrews] = useState<BrewLog[]>([]);
     const [coffees, setCoffees] = useState<Coffee[]>([]);
@@ -108,6 +109,78 @@ export default function DashboardScreen() {
         </Box>
     );
 
+    // Sections as elements so the wide (iPad/desktop) layout can re-arrange
+    // them into two columns: hero + dial-in left, stats + activity right.
+    const heroEl = lastBrew ? (
+        <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/(tabs)/history')}>
+            <Box backgroundColor="cardElevated" borderRadius={radii.xl} borderWidth={1} borderColor="border" padding="m">
+                <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+                    {monoLabel(`Last shot · ${heroDate}`, 'primary')}
+                    {heroRight ? <Text style={{ fontFamily: MONO, fontSize: 12 }} color="textSecondary">{heroRight}</Text> : null}
+                </Box>
+                <Text color="textPrimary" marginTop="s" style={{ fontFamily: 'Inter_700Bold', fontSize: 22, letterSpacing: -0.3 }} numberOfLines={1}>
+                    {lastBrewCoffee?.name || 'Unknown Coffee'}
+                </Text>
+                <Box flexDirection="row" alignItems="center" gap="s">
+                    <Text variant="caption" color="textSecondary">{lastBrewCoffee?.roastery || '—'}</Text>
+                    {lastFresh ? <Text variant="caption" style={{ color: lastFresh.tone === 'neutral' ? theme.colors.textSecondary : theme.colors[lastFresh.tone] }}>· {lastFresh.label}</Text> : null}
+                </Box>
+
+                <Box flexDirection="row" alignItems="flex-end" gap="l" marginTop="l">
+                    <Metric v={`${lastBrew.doseIn}g`} l="dose" />
+                    <Feather name="arrow-right" size={16} color={theme.colors.textTertiary} style={{ marginBottom: 14 }} />
+                    <Metric v={`${lastBrew.doseOut}g`} l="yield" />
+                    <Box flex={1} />
+                    <Box alignItems="flex-end">
+                        <Text color="primary" style={{ fontFamily: MONO, fontSize: 30, fontWeight: '700', lineHeight: 32 }}>
+                            {formatRatio(lastBrew.doseIn, lastBrew.doseOut)}
+                        </Text>
+                        <Text style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 1 }} color="textTertiary" textTransform="uppercase">
+                            {lastBrew.timeSeconds}s{lastBrew.rating ? ` · ${lastBrew.rating}/5` : ''}
+                        </Text>
+                    </Box>
+                </Box>
+            </Box>
+        </TouchableOpacity>
+    ) : (
+        <Box backgroundColor="cardElevated" borderRadius={radii.xl} borderWidth={1} borderColor="border" padding="l" alignItems="center">
+            <Text variant="body" color="textSecondary" textAlign="center" marginBottom="m">
+                No brews yet. Pull the amber button to log your first shot.
+            </Text>
+            <Box width="100%">
+                <Button label="Log a brew" onPress={() => router.push('/(tabs)/log')} icon={<Ionicons name="add-circle" size={19} color={theme.colors.onPrimary} />} />
+            </Box>
+        </Box>
+    );
+
+    const statsEl = (
+        <Box flexDirection="row" gap="s">
+            <StatCard icon={<MaterialCommunityIcons name="fire" size={20} color={theme.colors.primary} />} value={brews.length} label="Total brews" />
+            <StatCard icon={<MaterialCommunityIcons name="coffee" size={20} color={theme.colors.accent} />} value={coffees.length} label="Beans" />
+            <StatCard icon={<MaterialCommunityIcons name="star" size={20} color={theme.colors.gold} />} value={avgRating ? avgRating.toFixed(1) : '–'} label="Avg rating" />
+        </Box>
+    );
+
+    const activityEl = brews.length > 0 ? (
+        <Box marginTop="m" backgroundColor="cardPrimaryBackground" borderRadius={radii.l} borderWidth={1} borderColor="border" padding="m">
+            <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="s">
+                {monoLabel('Last 14 days')}
+                <Text style={{ fontFamily: MONO, fontSize: 11 }} color="textSecondary">{weekCount} shot{weekCount === 1 ? '' : 's'}</Text>
+            </Box>
+            <ActivityChart values={activity} />
+        </Box>
+    ) : null;
+
+    const dialEl = topCoffeeName ? (
+        <Box marginTop="m" backgroundColor="cardPrimaryBackground" borderRadius={radii.l} borderWidth={1} borderColor="border" padding="m">
+            <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="m">
+                <Text variant="body" fontWeight="600" color="textPrimary">Dial in again</Text>
+                <Text style={{ fontFamily: MONO }} color="primary" numberOfLines={1}>{topCoffeeName}</Text>
+            </Box>
+            <Button label="Log a brew" onPress={() => router.push('/(tabs)/log')} icon={<Ionicons name="add-circle" size={19} color={theme.colors.onPrimary} />} />
+        </Box>
+    ) : null;
+
     return (
         <Box flex={1} backgroundColor="mainBackground">
             <ScreenHeader
@@ -124,81 +197,29 @@ export default function DashboardScreen() {
             />
 
             <ScrollView
-                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingBottom: 130 }}
+                contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingBottom: 130, ...contentColumn() }}
                 showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
             >
-                {/* Hero — last shot */}
-                {lastBrew ? (
-                    <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/(tabs)/history')}>
-                        <Box backgroundColor="cardElevated" borderRadius={radii.xl} borderWidth={1} borderColor="border" padding="m">
-                            <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-                                {monoLabel(`Last shot · ${heroDate}`, 'primary')}
-                                {heroRight ? <Text style={{ fontFamily: MONO, fontSize: 12 }} color="textSecondary">{heroRight}</Text> : null}
-                            </Box>
-                            <Text color="textPrimary" marginTop="s" style={{ fontFamily: 'Inter_700Bold', fontSize: 22, letterSpacing: -0.3 }} numberOfLines={1}>
-                                {lastBrewCoffee?.name || 'Unknown Coffee'}
-                            </Text>
-                            <Box flexDirection="row" alignItems="center" gap="s">
-                                <Text variant="caption" color="textSecondary">{lastBrewCoffee?.roastery || '—'}</Text>
-                                {lastFresh ? <Text variant="caption" style={{ color: lastFresh.tone === 'neutral' ? theme.colors.textSecondary : theme.colors[lastFresh.tone] }}>· {lastFresh.label}</Text> : null}
-                            </Box>
-
-                            <Box flexDirection="row" alignItems="flex-end" gap="l" marginTop="l">
-                                <Metric v={`${lastBrew.doseIn}g`} l="dose" />
-                                <Feather name="arrow-right" size={16} color={theme.colors.textTertiary} style={{ marginBottom: 14 }} />
-                                <Metric v={`${lastBrew.doseOut}g`} l="yield" />
-                                <Box flex={1} />
-                                <Box alignItems="flex-end">
-                                    <Text color="primary" style={{ fontFamily: MONO, fontSize: 30, fontWeight: '700', lineHeight: 32 }}>
-                                        {formatRatio(lastBrew.doseIn, lastBrew.doseOut)}
-                                    </Text>
-                                    <Text style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 1 }} color="textTertiary" textTransform="uppercase">
-                                        {lastBrew.timeSeconds}s{lastBrew.rating ? ` · ${lastBrew.rating}/5` : ''}
-                                    </Text>
-                                </Box>
-                            </Box>
+                {isWide ? (
+                    <Box flexDirection="row" gap="m" alignItems="flex-start">
+                        <Box flex={1.25}>
+                            {heroEl}
+                            {dialEl}
                         </Box>
-                    </TouchableOpacity>
+                        <Box flex={1}>
+                            {statsEl}
+                            {activityEl}
+                        </Box>
+                    </Box>
                 ) : (
-                    <Box backgroundColor="cardElevated" borderRadius={radii.xl} borderWidth={1} borderColor="border" padding="l" alignItems="center">
-                        <Text variant="body" color="textSecondary" textAlign="center" marginBottom="m">
-                            No brews yet. Pull the amber button to log your first shot.
-                        </Text>
-                        <Box width="100%">
-                            <Button label="Log a brew" onPress={() => router.push('/(tabs)/log')} icon={<Ionicons name="add-circle" size={19} color={theme.colors.onPrimary} />} />
-                        </Box>
-                    </Box>
+                    <>
+                        {heroEl}
+                        <Box marginTop="m">{statsEl}</Box>
+                        {activityEl}
+                        {dialEl}
+                    </>
                 )}
-
-                {/* Stats */}
-                <Box flexDirection="row" gap="s" marginTop="m">
-                    <StatCard icon={<MaterialCommunityIcons name="fire" size={20} color={theme.colors.primary} />} value={brews.length} label="Total brews" />
-                    <StatCard icon={<MaterialCommunityIcons name="coffee" size={20} color={theme.colors.accent} />} value={coffees.length} label="Beans" />
-                    <StatCard icon={<MaterialCommunityIcons name="star" size={20} color={theme.colors.gold} />} value={avgRating ? avgRating.toFixed(1) : '–'} label="Avg rating" />
-                </Box>
-
-                {/* Activity */}
-                {brews.length > 0 && (
-                    <Box marginTop="m" backgroundColor="cardPrimaryBackground" borderRadius={radii.l} borderWidth={1} borderColor="border" padding="m">
-                        <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="s">
-                            {monoLabel('Last 14 days')}
-                            <Text style={{ fontFamily: MONO, fontSize: 11 }} color="textSecondary">{weekCount} shot{weekCount === 1 ? '' : 's'}</Text>
-                        </Box>
-                        <ActivityChart values={activity} />
-                    </Box>
-                )}
-
-                {/* Dial in again */}
-                {topCoffeeName ? (
-                    <Box marginTop="m" backgroundColor="cardPrimaryBackground" borderRadius={radii.l} borderWidth={1} borderColor="border" padding="m">
-                        <Box flexDirection="row" justifyContent="space-between" alignItems="center" marginBottom="m">
-                            <Text variant="body" fontWeight="600" color="textPrimary">Dial in again</Text>
-                            <Text style={{ fontFamily: MONO }} color="primary" numberOfLines={1}>{topCoffeeName}</Text>
-                        </Box>
-                        <Button label="Log a brew" onPress={() => router.push('/(tabs)/log')} icon={<Ionicons name="add-circle" size={19} color={theme.colors.onPrimary} />} />
-                    </Box>
-                ) : null}
             </ScrollView>
         </Box>
     );
