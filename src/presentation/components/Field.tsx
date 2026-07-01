@@ -55,7 +55,9 @@ export const TextField: React.FC<TextFieldProps> = ({
                     keyboardType={keyboardType}
                     multiline={multiline}
                     autoCapitalize={autoCapitalize}
-                    autoCorrect={false}
+                    // Autocorrect helps for free-text notes; off for single-line
+                    // identifiers (names, roastery, dates).
+                    autoCorrect={multiline}
                 />
                 {suffix ? <Text variant="body" color="textSecondary" marginLeft="s">{suffix}</Text> : null}
             </Box>

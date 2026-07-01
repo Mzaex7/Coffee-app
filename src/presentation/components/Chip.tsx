@@ -62,8 +62,10 @@ export const Chip: React.FC<ChipProps> = ({
     );
 
     if (onPress) {
+        // hitSlop lifts interactive chips to the ~44pt iOS touch target even
+        // when they're visually compact.
         return (
-            <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+            <TouchableOpacity onPress={onPress} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
                 {inner}
             </TouchableOpacity>
         );

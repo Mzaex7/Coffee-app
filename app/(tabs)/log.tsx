@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ScrollView, TouchableOpacity, Platform, Animated, Easing } from 'react-native';
+import { ScrollView, TouchableOpacity, Platform, Animated, Easing, Alert, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -155,10 +155,15 @@ export default function BrewLogScreen() {
         setTimerSeconds(0);
     };
 
+    const notify = (title: string, message: string) => {
+        if (Platform.OS === 'web') window.alert(message);
+        else Alert.alert(title, message);
+    };
+
     const handleSave = async () => {
         if (!selectedCoffeeId || !selectedGrinderId) {
             if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            alert('Please select a coffee and grinder first.');
+            notify('Almost there', 'Please select a coffee and grinder first.');
             return;
         }
         setSaving(true);
@@ -177,7 +182,7 @@ export default function BrewLogScreen() {
             router.back();
         } catch (e) {
             if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            alert('Error saving brew: ' + e);
+            notify('Could not save', 'Error saving brew: ' + e);
         } finally {
             setSaving(false);
         }
@@ -213,7 +218,8 @@ export default function BrewLogScreen() {
                     <Text variant="label" color="primary" fontWeight="bold" textTransform="uppercase">Reset</Text>
                 </TouchableOpacity>
             </Box>
-            <ScrollView contentContainerStyle={{ padding: theme.spacing.m, paddingBottom: 120, gap: theme.spacing.l, ...contentColumn(700) }}>
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: theme.spacing.m, paddingBottom: 120, gap: theme.spacing.l, ...contentColumn(700) }}>
 
                 {/* Equipment */}
                 <Box>
@@ -353,6 +359,7 @@ export default function BrewLogScreen() {
 
                 <Button label="Save Brew Log" onPress={handleSave} loading={saving} disabled={saving} />
             </ScrollView>
+            </KeyboardAvoidingView>
         </Box>
     );
 }

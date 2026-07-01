@@ -57,14 +57,17 @@ export const StarRating: React.FC<StarRatingProps> = ({
                         {/* Hit zones — only when interactive. */}
                         {!readonly && (
                             <View style={{ flexDirection: 'row', width: size, height: size }}>
+                                {/* hitSlop lifts each half-star to a comfortable ≥44pt tap target. */}
                                 <TouchableOpacity
                                     activeOpacity={0.6}
                                     onPress={() => setTo(star - 0.5)}
+                                    hitSlop={{ top: 10, bottom: 10, left: 6, right: 0 }}
                                     style={{ width: size / 2, height: size }}
                                 />
                                 <TouchableOpacity
                                     activeOpacity={0.6}
                                     onPress={() => setTo(star)}
+                                    hitSlop={{ top: 10, bottom: 10, left: 0, right: 6 }}
                                     style={{ width: size / 2, height: size }}
                                 />
                             </View>

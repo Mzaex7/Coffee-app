@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { FlatList, TouchableOpacity, ScrollView, View, Animated, Easing } from 'react-native';
+import { FlatList, TouchableOpacity, ScrollView, View, Animated, Easing, KeyboardAvoidingView, Platform } from 'react-native';
 import { BottomSheet } from '../../src/presentation/components/BottomSheet';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Box, Text, useTheme, radii, useIsWide, contentColumn } from '../../src/presentation/theme';
@@ -187,7 +187,9 @@ export default function AdvisorScreen() {
                 </Text>
             </ScreenHeader>
 
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <ScrollView
+                keyboardShouldPersistTaps="handled"
                 contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130, ...contentColumn(1040) }}
                 showsVerticalScrollIndicator={false}
             >
@@ -338,6 +340,7 @@ export default function AdvisorScreen() {
                     </Box>
                 </BottomSheet>
             </ScrollView>
+            </KeyboardAvoidingView>
         </Box>
     );
 }

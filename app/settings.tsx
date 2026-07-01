@@ -55,7 +55,9 @@ export default function SettingsScreen() {
             if (Platform.OS === 'web') alert('Added 40 sample brews.');
             else Alert.alert('Done', 'Added 40 sample brews.');
         } catch (e) {
-            alert('Error generating data: ' + e);
+            const msg = 'Error generating data: ' + e;
+            if (Platform.OS === 'web') window.alert(msg);
+            else Alert.alert('Error', msg);
         } finally {
             setBusy(null);
         }

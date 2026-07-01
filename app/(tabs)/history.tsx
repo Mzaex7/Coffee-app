@@ -99,8 +99,12 @@ export default function HistoryScreen() {
             <ScreenHeader title="Brews">
                 {usedCoffeeIds.length > 1 && (
                     <Box marginTop="m">
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: theme.spacing.xs }}>
-                            <Chip label="All" tone="primary" selected={filterCoffeeId === 'all'} onPress={() => setFilterCoffeeId('all')} small />
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={{ gap: theme.spacing.s, paddingVertical: theme.spacing.xs }}
+                        >
+                            <Chip label="All" tone="primary" selected={filterCoffeeId === 'all'} onPress={() => setFilterCoffeeId('all')} />
                             {usedCoffeeIds.map(id => (
                                 <Chip
                                     key={id}
@@ -108,7 +112,6 @@ export default function HistoryScreen() {
                                     tone="primary"
                                     selected={filterCoffeeId === id}
                                     onPress={() => setFilterCoffeeId(id)}
-                                    small
                                 />
                             ))}
                         </ScrollView>
@@ -169,7 +172,7 @@ export default function HistoryScreen() {
                                         <Text variant="subheader">{coffees[selectedBrew.coffeeId]?.name || 'Unknown'}</Text>
                                         <Text variant="caption" color="textSecondary" marginTop="xs">{new Date(selectedBrew.date).toLocaleString()}</Text>
                                     </Box>
-                                    <TouchableOpacity onPress={() => setDetailModalVisible(false)}>
+                                    <TouchableOpacity onPress={() => setDetailModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                                         <Text variant="body" color="textSecondary">Close</Text>
                                     </TouchableOpacity>
                                 </Box>

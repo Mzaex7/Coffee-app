@@ -1,5 +1,5 @@
 import React, { useCallback, useState, forwardRef, useImperativeHandle } from 'react';
-import { FlatList, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { FlatList, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, RefreshControl } from 'react-native';
 import { BottomSheet } from '../components/BottomSheet';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,6 +26,7 @@ export const ManageGrindersScreen = forwardRef<ShelfPanelHandle, { embedded?: bo
     const [grinders, setGrinders] = useState<Grinder[]>([]);
     const [modalVisible, setModalVisible] = useState(false);
     const [form, setForm] = useState(emptyForm);
+    const [refreshing, setRefreshing] = useState(false);
 
     const repo = new GrinderRepository();
     const theme = useTheme();
@@ -43,6 +44,12 @@ export const ManageGrindersScreen = forwardRef<ShelfPanelHandle, { embedded?: bo
             loadGrinders();
         }, [user?.id])
     );
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadGrinders();
+        setRefreshing(false);
+    };
 
     const openAdd = () => {
         setForm(emptyForm);
@@ -132,6 +139,7 @@ export const ManageGrindersScreen = forwardRef<ShelfPanelHandle, { embedded?: bo
                 columnWrapperStyle={isWide ? { gap: theme.spacing.s } : undefined}
                 contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130, ...contentColumn() }}
                 showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
                 ItemSeparatorComponent={() => <Box height={theme.spacing.s} />}
                 ListEmptyComponent={
                     <Box marginTop="xl">

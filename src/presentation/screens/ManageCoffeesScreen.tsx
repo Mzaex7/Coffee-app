@@ -1,5 +1,5 @@
 import React, { useCallback, useState, forwardRef, useImperativeHandle } from 'react';
-import { FlatList, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { FlatList, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, RefreshControl } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
@@ -55,6 +55,7 @@ export const ManageCoffeesScreen = forwardRef<ShelfPanelHandle, { embedded?: boo
     const [form, setForm] = useState(emptyForm);
     const [processPicker, setProcessPicker] = useState(false);
     const [roastPicker, setRoastPicker] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
 
     const repo = new CoffeeRepository();
     const theme = useTheme();
@@ -72,6 +73,12 @@ export const ManageCoffeesScreen = forwardRef<ShelfPanelHandle, { embedded?: boo
             loadCoffees();
         }, [user?.id])
     );
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadCoffees();
+        setRefreshing(false);
+    };
 
     const openAdd = () => {
         setForm(emptyForm);
@@ -167,6 +174,7 @@ export const ManageCoffeesScreen = forwardRef<ShelfPanelHandle, { embedded?: boo
                 columnWrapperStyle={isWide ? { gap: theme.spacing.s } : undefined}
                 contentContainerStyle={{ paddingHorizontal: theme.spacing.m, paddingTop: theme.spacing.s, paddingBottom: 130, ...contentColumn() }}
                 showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
                 ItemSeparatorComponent={() => <Box height={theme.spacing.s} />}
                 ListEmptyComponent={
                     <Box marginTop="xl">
@@ -220,7 +228,7 @@ export const ManageCoffeesScreen = forwardRef<ShelfPanelHandle, { embedded?: boo
                                             );
                                         })}
                                     </Box>
-                                    <TextField value={form.roastDate} onChangeText={(v) => setForm({ ...form, roastDate: v })} placeholder="YYYY-MM-DD" autoCapitalize="none" />
+                                    <TextField value={form.roastDate} onChangeText={(v) => setForm({ ...form, roastDate: v })} placeholder="YYYY-MM-DD" autoCapitalize="none" keyboardType="numbers-and-punctuation" />
                                     {formFresh && (
                                         <Box flexDirection="row" alignItems="center" gap="xs" marginTop="s">
                                             <Chip label={formFresh.label} tone={formFresh.tone} small />

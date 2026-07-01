@@ -47,6 +47,8 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
                         <Text
                             color="textPrimary"
                             marginTop={eyebrow ? 'xs' : undefined}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
                             style={{ fontFamily: 'Inter_700Bold', fontSize: titleSize, letterSpacing: -0.5 }}
                         >
                             {title}

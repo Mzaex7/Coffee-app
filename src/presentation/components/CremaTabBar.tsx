@@ -44,8 +44,8 @@ export const CremaTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) 
         const active = current === item.route;
         const color = active ? theme.colors.primary : theme.colors.textTertiary;
         return (
-            <TouchableOpacity onPress={() => go(item.route)} activeOpacity={0.7} style={{ flex: 1 }}>
-                <Box alignItems="center" gap="xs">
+            <TouchableOpacity onPress={() => go(item.route)} activeOpacity={0.7} style={{ flex: 1 }} accessibilityRole="tab" accessibilityLabel={item.label} accessibilityState={{ selected: active }}>
+                <Box alignItems="center" justifyContent="center" gap="xs" style={{ minHeight: 44 }}>
                     {item.render(color, active)}
                     <Text
                         variant="label"
